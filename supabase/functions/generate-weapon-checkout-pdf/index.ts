@@ -22,7 +22,36 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'https://esm.sh/pdf-lib@1.17.1';
 import fontkit from 'https://esm.sh/@pdf-lib/fontkit@1.1.1';
-import { getGoogleAccessToken } from '../_shared/google-auth.ts';
+// ── Inlined google-auth (avoids _shared bundling issues with --legacy-bundle) ─
+import { create, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
+
+async function getGoogleAccessToken(saJson: string, scope: string): Promise<string> {
+  const sa = JSON.parse(saJson) as { client_email: string; private_key: string };
+  const pem = sa.private_key.replace(/\\n/g, '\n');
+  const pemBody = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+    .replace(/-----END PRIVATE KEY-----/g, '')
+    .replace(/\s+/g, '');
+  const der = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey(
+    'pkcs8', der.buffer,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false, ['sign'],
+  );
+  const now = getNumericDate(0);
+  const jwt = await create(
+    { alg: 'RS256', typ: 'JWT' },
+    { iss: sa.client_email, scope, aud: 'https://oauth2.googleapis.com/token', iat: now, exp: getNumericDate(60 * 30) },
+    key,
+  );
+  const tokRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
+  });
+  if (!tokRes.ok) throw new Error(`Google token exchange failed: ${await tokRes.text()}`);
+  return ((await tokRes.json()) as { access_token: string }).access_token;
+}
 
 const HEEBO_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/heebo/Heebo%5Bwght%5D.ttf';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';

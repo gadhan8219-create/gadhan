@@ -116,7 +116,13 @@ export default function DelekPage() {
         .from('fuel-receipts')
         .upload(path, receiptFile, { contentType: receiptFile.type || 'image/jpeg', upsert: true });
       if (upErr) throw upErr;
-      const { data: pub } = supabase.storage.from('fuel-receipts').getPublicUrl(path);
+      // The stored object key stays ASCII, but the download filename carries the
+      // Hebrew driver name + date so a downloaded receipt is human-readable.
+      const dateStr = new Date().toLocaleDateString('he-IL').replace(/\//g, '.');
+      const downloadName = `${driverName.trim()} ${dateStr}.${ext}`;
+      const { data: pub } = supabase.storage
+        .from('fuel-receipts')
+        .getPublicUrl(path, { download: downloadName });
 
       // Log the fueling.
       const { error: logErr } = await supabase.from('fuel_logs').insert({

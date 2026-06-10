@@ -188,6 +188,9 @@ export default function WeaponsTransferPage() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  /** Synthetic serial inserted for non-serial (quantity) items. Hide from UI. */
+  const isQtySerial = (s: string) => s.startsWith('__qty__');
+
   function resetForms() {
     setSrcSoldier(null); setDstSoldier(null);
     setZItemId(''); setZSerialQ(''); setZSerial('');
@@ -247,7 +250,7 @@ export default function WeaponsTransferPage() {
                 soldier,
                 items:      (remaining as any[]).map((r) => ({
                               name:     r.weapons_items?.name ?? '—',
-                              serial:   r.serial_number,
+                              serial:   isQtySerial(r.serial_number) ? null : r.serial_number,
                               quantity: 1,
                             })),
                 performed_by,
@@ -283,8 +286,11 @@ export default function WeaponsTransferPage() {
 
   const roshOverlap = srcSoldier && dstSoldier
     ? (() => {
-        const sm: Record<string, SerialRow> = {}; for (const r of srcSerials) sm[r.item_id] = r;
-        const dm: Record<string, SerialRow> = {}; for (const r of dstSerials) dm[r.item_id] = r;
+        // Exclude qty-only synthetic serials — ראש בראש only applies to real serial items
+        const sm: Record<string, SerialRow> = {};
+        for (const r of srcSerials) if (!isQtySerial(r.serial_number)) sm[r.item_id] = r;
+        const dm: Record<string, SerialRow> = {};
+        for (const r of dstSerials) if (!isQtySerial(r.serial_number)) dm[r.item_id] = r;
         return Object.keys(sm).filter((id) => dm[id])
           .map((id) => ({ itemId: id, itemName: sm[id].item_name, srcRow: sm[id], dstRow: dm[id] }));
       })()
@@ -313,7 +319,7 @@ export default function WeaponsTransferPage() {
   }
 
   async function doIpasoon() {
-    const rows = srcSerials.filter((r) => checked.has(r.serial_number) && !r.is_zeroed);
+    const rows = srcSerials.filter((r) => checked.has(r.serial_number) && !r.is_zeroed && !isQtySerial(r.serial_number));
     if (!rows.length) { setError('לא נבחרו פריטים'); return; }
     setLoading(true); setError(null);
     try {
@@ -403,7 +409,9 @@ export default function WeaponsTransferPage() {
                         <input type="checkbox" className="accent-red-600 w-4 h-4"
                           checked={checked.has(r.serial_number)} onChange={() => toggleCheck(r.serial_number)} />
                         <span className="flex-1 text-sm font-medium">{r.item_name}</span>
-                        <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                        {!isQtySerial(r.serial_number) && (
+                          <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                        )}
                         {r.is_zeroed && <span className="badge bg-orange-100 text-orange-700 text-xs">מאופסן</span>}
                       </label>
                     ))}
@@ -415,7 +423,7 @@ export default function WeaponsTransferPage() {
                         toCredit.map((r) => r.id),
                         srcSoldier ? {
                           soldier: { full_name: srcSoldier.full_name, personal_number: srcSoldier.personal_number, unit_name: srcSoldier.unit_name },
-                          credited_items: toCredit.map((r) => ({ name: r.item_name, serial: r.serial_number, quantity: 1 })),
+                          credited_items: toCredit.map((r) => ({ name: r.item_name, serial: isQtySerial(r.serial_number) ? null : r.serial_number, quantity: 1 })),
                           performed_by: profile?.full_name ?? '',
                         } : undefined,
                       );
@@ -513,7 +521,9 @@ export default function WeaponsTransferPage() {
                       checked={checked.has(r.serial_number)} disabled={atDst}
                       onChange={() => toggleCheck(r.serial_number)} />
                     <span className="flex-1 text-sm font-medium">{r.item_name}</span>
-                    <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                    {!isQtySerial(r.serial_number) && (
+                      <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                    )}
                     {atDst && <span className="text-xs text-slate-400">כבר ביעד</span>}
                   </label>
                 );
@@ -564,7 +574,7 @@ export default function WeaponsTransferPage() {
                           checked={checked.has(o.itemId)} onChange={() => toggleCheck(o.itemId)} />
                         <span className="flex-1 text-sm font-medium">{o.itemName}</span>
                         <span className="text-xs text-slate-500 font-mono" dir="ltr">
-                          {o.srcRow.serial_number} ⇄ {o.dstRow.serial_number}
+                          {isQtySerial(o.srcRow.serial_number) ? '—' : o.srcRow.serial_number} ⇄ {isQtySerial(o.dstRow.serial_number) ? '—' : o.dstRow.serial_number}
                         </span>
                       </label>
                     ))}
@@ -602,7 +612,9 @@ export default function WeaponsTransferPage() {
                       checked={checked.has(r.serial_number)} disabled={r.is_zeroed}
                       onChange={() => toggleCheck(r.serial_number)} />
                     <span className="flex-1 text-sm font-medium">{r.item_name}</span>
-                    <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                    {!isQtySerial(r.serial_number) && (
+                      <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                    )}
                     {r.is_zeroed && <span className="badge bg-orange-100 text-orange-700 text-xs">מאופסן</span>}
                   </label>
                 ))}

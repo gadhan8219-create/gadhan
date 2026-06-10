@@ -23,6 +23,7 @@ interface TeamRow  { id: string; unit_id: string; name: string; }
 interface Assignment {
   item_id: string;
   item_name: string;
+  has_serials: boolean;
   serial_number: string;
   assigned_at: string | null;
 }
@@ -249,7 +250,7 @@ export default function WeaponsCheckoutPage() {
     // Load current assignments → display as read-only amber card
     const { data } = await supabase
       .from('weapons_item_serials')
-      .select('item_id, serial_number, assigned_at, weapons_items(name)')
+      .select('item_id, serial_number, assigned_at, weapons_items(name, has_serials)')
       .eq('assigned_to_pn', s.personal_number)
       .not('assigned_to_pn', 'is', null)
       .order('assigned_at', { ascending: false });
@@ -258,6 +259,7 @@ export default function WeaponsCheckoutPage() {
       const asgn: Assignment[] = (data as any[]).map((r) => ({
         item_id: r.item_id,
         item_name: r.weapons_items?.name ?? '—',
+        has_serials: r.weapons_items?.has_serials ?? true,
         serial_number: r.serial_number,
         assigned_at: r.assigned_at,
       }));
@@ -358,15 +360,21 @@ export default function WeaponsCheckoutPage() {
               .then()
           );
         } else if (!item.has_serials) {
-          // Non-serial item → decrement stock quantity
+          // Non-serial item → insert one synthetic serial row per unit.
+          // Serial is prefixed __qty__ so the rest of the UI can distinguish these
+          // from real serial items without a schema change.
           const qty = parseInt(line.quantity) || 1;
-          const currentQty = item.quantity ?? 0;
-          dbUpdates.push(
-            supabase.from('weapons_items')
-              .update({ quantity: Math.max(0, currentQty - qty) })
-              .eq('id', line.itemId)
-              .then()
-          );
+          for (let i = 0; i < qty; i++) {
+            dbUpdates.push(
+              supabase.from('weapons_item_serials').insert({
+                item_id: line.itemId,
+                serial_number: `__qty__${crypto.randomUUID().replace(/-/g, '')}`,
+                assigned_to_pn: activePN,
+                assigned_to_name: activeName,
+                assigned_at: now,
+              }).then()
+            );
+          }
         }
       }
       await Promise.all(dbUpdates);
@@ -633,12 +641,28 @@ export default function WeaponsCheckoutPage() {
             <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
               <p className="text-xs font-medium text-amber-700 mb-2">בהחזקת החייל ({assignments.length})</p>
               <div className="space-y-1.5">
-                {assignments.map((a) => (
+                {/* Serial items — show individual serial numbers */}
+                {assignments.filter((a) => a.has_serials).map((a) => (
                   <div key={`${a.item_id}-${a.serial_number}`} className="flex items-center justify-between text-sm">
                     <span className="text-slate-700">{a.item_name}</span>
                     <span className="text-xs font-mono text-amber-700" dir="ltr">{a.serial_number}</span>
                   </div>
                 ))}
+                {/* Non-serial items — group by item and show quantity */}
+                {(() => {
+                  const qtyMap = new Map<string, { name: string; qty: number }>();
+                  for (const a of assignments.filter((a) => !a.has_serials)) {
+                    const cur = qtyMap.get(a.item_id);
+                    if (cur) cur.qty++;
+                    else qtyMap.set(a.item_id, { name: a.item_name, qty: 1 });
+                  }
+                  return [...qtyMap.entries()].map(([id, v]) => (
+                    <div key={id} className="flex items-center justify-between text-sm">
+                      <span className="text-slate-700">{v.name}</span>
+                      <span className="text-xs text-amber-700">כמות: {v.qty}</span>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           )}

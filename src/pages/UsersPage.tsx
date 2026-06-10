@@ -76,9 +76,11 @@ export default function UsersPage() {
           phone: form.phone.trim() || null,
         },
       });
-      if (error) throw error;
-      const res = data as { ok: boolean; error?: string };
-      if (!res.ok) throw new Error(res.error ?? 'שגיאה לא ידועה');
+      // supabase.functions.invoke throws a generic "non-2xx" error for HTTP errors.
+      // The actual error message is in `data` (the response body is always parsed).
+      const res = (data ?? {}) as { ok: boolean; error?: string };
+      if (error && !res.error) throw error;   // real network error
+      if (!res.ok) throw new Error(res.error ?? error?.message ?? 'שגיאה לא ידועה');
       setFeedback({ type: 'success', msg: 'המשתמש נוצר בהצלחה' });
       setForm(EMPTY_FORM);
       setShowAdd(false);
@@ -99,9 +101,9 @@ export default function UsersPage() {
       const { data, error } = await supabase.functions.invoke('manage-users', {
         body: { action: 'delete', user_id: p.id },
       });
-      if (error) throw error;
-      const res = data as { ok: boolean; error?: string };
-      if (!res.ok) throw new Error(res.error ?? 'שגיאה לא ידועה');
+      const res = (data ?? {}) as { ok: boolean; error?: string };
+      if (error && !res.error) throw error;
+      if (!res.ok) throw new Error(res.error ?? error?.message ?? 'שגיאה לא ידועה');
       setFeedback({ type: 'success', msg: 'המשתמש נמחק' });
       load();
     } catch (err) {

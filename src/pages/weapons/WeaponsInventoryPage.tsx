@@ -100,7 +100,8 @@ export default function WeaponsInventoryPage() {
     return items.reduce((s, i) => s + (counts[i.id]?.[unitId] ?? 0), 0);
   }
   function stockFor(item: WeaponsItem) {
-    if (!item.has_serials) return item.quantity ?? 0;
+    // For non-serial items, quantity = total stock; subtract rows assigned in weapons_item_serials
+    if (!item.has_serials) return (item.quantity ?? 0) - totalIssued(item.id);
     return (totalCounts[item.id] ?? 0) - totalIssued(item.id);
   }
 
@@ -226,7 +227,7 @@ export default function WeaponsInventoryPage() {
       {loading ? (
         <div className="text-center text-slate-400 py-12">טוען נתונים...</div>
       ) : (
-        <div className="table-wrap card p-0 overflow-hidden">
+        <div className="table-wrap card p-0 overflow-x-auto">
           <table className="table-base">
             <thead>
               <tr>

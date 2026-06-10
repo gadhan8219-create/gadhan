@@ -78,9 +78,18 @@ async function buildPdf(
   const R = 545; const L = 50;
   let y = 800;
 
-  const dateStr = new Date(timestamp).toLocaleString('he-IL', {
-    dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Jerusalem',
-  });
+  // Avoid he-IL locale: it injects Unicode bidi marks that reverse numbers in pdf-lib.
+  // Build a clean "d.m.yyyy  HH:MM" string using neutral en-GB parts instead.
+  const dateStr = (() => {
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Jerusalem',
+      day: 'numeric', month: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+    const p = fmt.formatToParts(new Date(timestamp ?? new Date().toISOString()));
+    const get = (t: string) => p.find((x) => x.type === t)?.value ?? '0';
+    return `${get('day')}.${get('month')}.${get('year')}  ${get('hour')}:${get('minute')}`;
+  })();
 
   // ── Title ──
   drawRight(page, title, R, y, H, 20);

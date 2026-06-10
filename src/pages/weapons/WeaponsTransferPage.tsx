@@ -3,6 +3,37 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import type { WeaponsItem } from '../../lib/database.types';
 
+// ── Drive PDF helper ─────────────────────────────────────────────────────────
+
+interface CreditPdfArgs {
+  soldier: { full_name: string; personal_number: string; unit_name: string };
+  credited_items: Array<{ name: string; serial: string | null }>;
+  performed_by: string;
+}
+
+async function callCreditPdf(args: CreditPdfArgs): Promise<{ credit_url: string; checkout_url: string | null }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-weapon-checkout-pdf`;
+  const resp = await fetch(fnUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session?.access_token ?? ''}`,
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      type: 'credit',
+      soldier: args.soldier,
+      credited_items: args.credited_items,
+      performed_by: args.performed_by,
+      timestamp: new Date().toISOString(),
+    }),
+  });
+  const result = await resp.json();
+  if (!result.ok) throw new Error(result.error ?? 'PDF generation failed');
+  return { credit_url: result.credit_url, checkout_url: result.checkout_url ?? null };
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface SoldierRow {
@@ -169,14 +200,27 @@ export default function WeaponsTransferPage() {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  async function doZikhui(ids: string[]) {
+  async function doZikhui(ids: string[], pdfCtx?: CreditPdfArgs) {
     if (!ids.length) { setError('לא נבחרו פריטים'); return; }
     setLoading(true); setError(null);
     try {
+      // 1. Clear assignments in DB
       await supabase.from('weapons_item_serials')
         .update({ assigned_to_pn: null, assigned_to_name: null, assigned_at: null, is_zeroed: false })
         .in('id', ids);
-      setSuccess(`${ids.length} פריטים הוחזרו לגדוד`);
+
+      // 2. Generate PDFs (best-effort — DB already updated)
+      if (pdfCtx) {
+        try {
+          const { credit_url } = await callCreditPdf(pdfCtx);
+          setSuccess(`${ids.length} פריטים הוחזרו · PDF נשמר: ${credit_url}`);
+        } catch (pdfErr) {
+          setSuccess(`${ids.length} פריטים הוחזרו (PDF לא נוצר: ${(pdfErr as Error).message})`);
+        }
+      } else {
+        setSuccess(`${ids.length} פריטים הוחזרו לגדוד`);
+      }
+
       await loadAll(); resetForms();
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
@@ -329,7 +373,17 @@ export default function WeaponsTransferPage() {
                     ))}
                   </div>
                   <button type="button" disabled={loading || !checked.size}
-                    onClick={() => doZikhui(srcSerials.filter((r) => checked.has(r.serial_number)).map((r) => r.id))}
+                    onClick={() => {
+                      const toCredit = srcSerials.filter((r) => checked.has(r.serial_number));
+                      doZikhui(
+                        toCredit.map((r) => r.id),
+                        srcSoldier ? {
+                          soldier: { full_name: srcSoldier.full_name, personal_number: srcSoldier.personal_number, unit_name: srcSoldier.unit_name },
+                          credited_items: toCredit.map((r) => ({ name: r.item_name, serial: r.serial_number })),
+                          performed_by: profile?.full_name ?? '',
+                        } : undefined,
+                      );
+                    }}
                     className="btn-danger w-full disabled:opacity-50">
                     {loading ? 'מזכה...' : `זכה ${checked.size ? checked.size + ' פריטים' : ''}`}
                   </button>
@@ -379,7 +433,16 @@ export default function WeaponsTransferPage() {
                       <button type="button" disabled={loading}
                         onClick={() => {
                           const row = allSerials.find((r) => r.item_id === zItemId && r.serial_number === zSerial);
-                          if (row) doZikhui([row.id]);
+                          if (!row) return;
+                          const soldierRow = soldiers.find((s) => s.personal_number === row.assigned_to_pn);
+                          doZikhui(
+                            [row.id],
+                            soldierRow ? {
+                              soldier: { full_name: soldierRow.full_name, personal_number: soldierRow.personal_number, unit_name: soldierRow.unit_name },
+                              credited_items: [{ name: row.item_name, serial: row.serial_number }],
+                              performed_by: profile?.full_name ?? '',
+                            } : undefined,
+                          );
                         }}
                         className="btn-danger w-full disabled:opacity-50">
                         {loading ? 'מזכה...' : `זכה צ׳ ${zSerial}`}

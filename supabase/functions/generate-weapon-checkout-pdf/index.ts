@@ -1,105 +1,225 @@
 // supabase/functions/generate-weapon-checkout-pdf/index.ts
-// Generates a Hebrew A4 PDF for a weapons checkout and uploads it to Google Drive.
 //
-// Required Supabase secrets:
-//   GOOGLE_SERVICE_ACCOUNT_JSON        full SA JSON key (same one used by export-to-sheets)
-//   WEAPONS_CHECKOUT_DRIVE_FOLDER_ID   target Drive folder ID
-//     ↳ Must be a Shared Drive folder (or a regular folder shared with the SA email).
-//       Personal "My Drive" upload fails for service accounts (0-byte quota).
-//       Share the folder → Add member → SA email → Editor role.
+// Handles two PDF types:
+//   type="checkout" → ROOT/נשקיה/{unit}/החתמות/{name}.pdf  (with signature)
+//   type="credit"   → ROOT/נשקיה/{unit}/זיכויים/{name}.pdf  (credited items)
+//                   → also overwrites החתמות PDF if soldier still holds items
 //
-// POST body:
-// {
-//   soldier:           { full_name, personal_number, phone?, unit_name, team_name? },
-//   items:             Array<{ name, serial?, quantity }>,
-//   signature_png_b64: string,   // base64 PNG without "data:..." prefix
-//   performed_by:      string,
-//   timestamp:         string,   // ISO-8601
-// }
+// Required secrets:
+//   GOOGLE_SERVICE_ACCOUNT_JSON        SA JSON key
+//   WEAPONS_CHECKOUT_DRIVE_FOLDER_ID   root Drive folder ID (shared with SA as Editor)
 
 // deno-lint-ignore-file no-explicit-any
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'https://esm.sh/pdf-lib@1.17.1';
 import fontkit from 'https://esm.sh/@pdf-lib/fontkit@1.1.1';
-// ── Inlined google-auth (avoids _shared bundling issues with --legacy-bundle) ─
 import { create, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
 
+// ── Google auth (inlined) ─────────────────────────────────────────────────────
 async function getGoogleAccessToken(saJson: string, scope: string): Promise<string> {
   const sa = JSON.parse(saJson) as { client_email: string; private_key: string };
   const pem = sa.private_key.replace(/\\n/g, '\n');
-  const pemBody = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
-    .replace(/-----END PRIVATE KEY-----/g, '')
-    .replace(/\s+/g, '');
+  const pemBody = pem.replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\s+/g, '');
   const der = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
-  const key = await crypto.subtle.importKey(
-    'pkcs8', der.buffer,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false, ['sign'],
-  );
+  const key = await crypto.subtle.importKey('pkcs8', der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
   const now = getNumericDate(0);
   const jwt = await create(
     { alg: 'RS256', typ: 'JWT' },
     { iss: sa.client_email, scope, aud: 'https://oauth2.googleapis.com/token', iat: now, exp: getNumericDate(60 * 30) },
     key,
   );
-  const tokRes = await fetch('https://oauth2.googleapis.com/token', {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
   });
-  if (!tokRes.ok) throw new Error(`Google token exchange failed: ${await tokRes.text()}`);
-  return ((await tokRes.json()) as { access_token: string }).access_token;
+  if (!res.ok) throw new Error(`Google token exchange failed: ${await res.text()}`);
+  return ((await res.json()) as { access_token: string }).access_token;
 }
 
-const HEEBO_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/heebo/Heebo%5Bwght%5D.ttf';
+// ── Drive helpers ─────────────────────────────────────────────────────────────
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+async function driveGet(token: string, url: string) {
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error(`Drive GET failed (${r.status}): ${await r.text()}`);
+  return r.json();
+}
 
-const jsonRes = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+async function findOrCreateFolder(token: string, parentId: string, name: string): Promise<string> {
+  const escaped = name.replace(/'/g, "\\'");
+  const q = encodeURIComponent(`name='${escaped}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const data = await driveGet(token, `https://www.googleapis.com/drive/v3/files?q=${q}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id)`);
+  if (data.files?.length > 0) return data.files[0].id as string;
+
+  const r = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
   });
+  if (!r.ok) throw new Error(`Create folder "${name}" failed (${r.status}): ${await r.text()}`);
+  return ((await r.json()) as { id: string }).id;
+}
 
-// ── font cache (warm instance) ────────────────────────────────────────────────
+async function resolvePath(token: string, rootId: string, parts: string[]): Promise<string> {
+  let id = rootId;
+  for (const part of parts) id = await findOrCreateFolder(token, id, part);
+  return id;
+}
+
+async function deleteExistingFiles(token: string, folderId: string, filename: string) {
+  const escaped = filename.replace(/'/g, "\\'");
+  const q = encodeURIComponent(`name='${escaped}' and '${folderId}' in parents and trashed=false`);
+  const data = await driveGet(token, `https://www.googleapis.com/drive/v3/files?q=${q}&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=files(id)`);
+  for (const f of (data.files ?? [])) {
+    await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?supportsAllDrives=true`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+}
+
+async function uploadFile(token: string, folderId: string, filename: string, pdfBytes: Uint8Array): Promise<string> {
+  const boundary = 'weapons_' + Date.now();
+  const metadata = JSON.stringify({ name: filename, mimeType: 'application/pdf', parents: [folderId] });
+  const enc = new TextEncoder();
+  const parts = [
+    enc.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`),
+    enc.encode(`--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`),
+    pdfBytes,
+    enc.encode(`\r\n--${boundary}--`),
+  ];
+  const total = parts.reduce((s, p) => s + p.length, 0);
+  const body = new Uint8Array(total);
+  let off = 0;
+  for (const p of parts) { body.set(p, off); off += p.length; }
+
+  const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  if (!r.ok) throw new Error(`Drive upload failed (${r.status}): ${await r.text()}`);
+  const file = await r.json() as { id: string };
+  return `https://drive.google.com/file/d/${file.id}/view`;
+}
+
+async function upsertPdf(token: string, folderId: string, filename: string, bytes: Uint8Array): Promise<string> {
+  await deleteExistingFiles(token, folderId, filename);
+  return uploadFile(token, folderId, filename, bytes);
+}
+
+function safeFilename(name: string): string {
+  return name.replace(/[/\\:*?"<>|]/g, '_');
+}
+
+// ── Font ──────────────────────────────────────────────────────────────────────
+const HEEBO_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/heebo/Heebo%5Bwght%5D.ttf';
 let cachedFont: Uint8Array | null = null;
 async function loadHeebo(): Promise<Uint8Array> {
   if (cachedFont) return cachedFont;
-  const res = await fetch(HEEBO_URL);
-  if (!res.ok) throw new Error(`Heebo font fetch failed: ${res.status}`);
-  cachedFont = new Uint8Array(await res.arrayBuffer());
+  const r = await fetch(HEEBO_URL);
+  if (!r.ok) throw new Error(`Heebo fetch failed: ${r.status}`);
+  cachedFont = new Uint8Array(await r.arrayBuffer());
   return cachedFont;
 }
 
-// ── RTL helper ────────────────────────────────────────────────────────────────
-// Pass Hebrew in logical Unicode order; PDF viewers handle bidi reordering.
-function drawRight(
-  page: PDFPage,
-  text: string,
-  rightX: number,
-  y: number,
-  font: PDFFont,
-  size: number,
-  color = rgb(0, 0, 0),
-) {
+// ── RTL draw helper ───────────────────────────────────────────────────────────
+function drawRight(page: PDFPage, text: string, rx: number, y: number, font: PDFFont, size: number, color = rgb(0, 0, 0)) {
   const w = font.widthOfTextAtSize(text, size);
-  page.drawText(text, { x: rightX - w, y, size, font, color });
+  page.drawText(text, { x: rx - w, y, size, font, color });
 }
 
-// ── PDF builder ───────────────────────────────────────────────────────────────
+// ── PDF: Checkout (with optional signature) ───────────────────────────────────
 interface ItemLine { name: string; serial?: string | null; quantity: number }
+interface SoldierInfo { full_name: string; personal_number: string; phone?: string; unit_name: string; team_name?: string }
 
-async function buildPdf(
-  soldier: { full_name: string; personal_number: string; phone?: string; unit_name: string; team_name?: string },
+async function buildCheckoutPdf(
+  soldier: SoldierInfo,
   items: ItemLine[],
-  signaturePngB64: string,
+  signatureB64: string | null,
+  performedBy: string,
+  timestamp: string,
+  updateNote?: string,
+): Promise<Uint8Array> {
+  const fontBytes = await loadHeebo();
+  const pdf = await PDFDocument.create();
+  pdf.registerFontkit(fontkit);
+  const heebo = await pdf.embedFont(fontBytes, { subset: true });
+
+  const page = pdf.addPage([595.28, 841.89]);
+  const R = 545; const L = 50;
+  let y = 800;
+
+  const dateStr = new Date(timestamp).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Jerusalem' });
+  const title = updateNote ? 'סיכום פריטי נשק בהחזקה' : 'טופס החתמת נשק';
+
+  drawRight(page, title, R, y, heebo, 20);
+  y -= 32;
+  if (updateNote) { drawRight(page, updateNote, R, y, heebo, 10, rgb(0.5, 0.5, 0.5)); y -= 18; }
+  page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: rgb(0.7, 0.7, 0.7) });
+  y -= 18;
+
+  for (const [k, v] of [['תאריך', dateStr], ['בוצע ע״י', performedBy]] as [string, string][]) {
+    drawRight(page, `${k}: ${v}`, R, y, heebo, 11); y -= 16;
+  }
+  y -= 12;
+
+  drawRight(page, 'פרטי החייל', R, y, heebo, 14, rgb(0.15, 0.15, 0.15));
+  y -= 22;
+  const soldierLines: [string, string][] = [
+    ['שם מלא', soldier.full_name], ['מספר אישי', soldier.personal_number],
+    ...(soldier.phone ? [['טלפון', soldier.phone] as [string, string]] : []),
+    ['מסגרת', soldier.unit_name],
+    ...(soldier.team_name ? [['צוות', soldier.team_name] as [string, string]] : []),
+  ];
+  for (const [k, v] of soldierLines) { drawRight(page, `${k}: ${v}`, R, y, heebo, 11); y -= 16; }
+  y -= 10;
+  page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+  y -= 16;
+
+  const heading = updateNote ? `פריטים בהחזקה כרגע (${items.length})` : `פריטים שנמסרו (${items.length})`;
+  drawRight(page, heading, R, y, heebo, 14, rgb(0.15, 0.15, 0.15));
+  y -= 22;
+
+  const CN = R; const CS = L + 200; const CQ = L + 55;
+  page.drawLine({ start: { x: L, y: y + 4 }, end: { x: R, y: y + 4 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+  drawRight(page, 'שם פריט', CN, y - 12, heebo, 10, rgb(0.4, 0.4, 0.4));
+  drawRight(page, "מ.ס / צ'", CS, y - 12, heebo, 10, rgb(0.4, 0.4, 0.4));
+  drawRight(page, 'כמות', CQ, y - 12, heebo, 10, rgb(0.4, 0.4, 0.4));
+  y -= 22;
+  page.drawLine({ start: { x: L, y: y + 4 }, end: { x: R, y: y + 4 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+
+  for (const item of items) {
+    drawRight(page, item.name, CN, y - 12, heebo, 11);
+    drawRight(page, item.serial || '—', CS, y - 12, heebo, 11);
+    drawRight(page, String(item.quantity), CQ, y - 12, heebo, 11);
+    y -= 18;
+  }
+  page.drawLine({ start: { x: L, y: y + 4 }, end: { x: R, y: y + 4 }, thickness: 0.3, color: rgb(0.9, 0.9, 0.9) });
+
+  // Signature
+  if (signatureB64) {
+    y -= 24;
+    drawRight(page, 'חתימת החייל:', R, y, heebo, 11, rgb(0.3, 0.3, 0.3));
+    y -= 10;
+    const sigBytes = Uint8Array.from(atob(signatureB64), (c) => c.charCodeAt(0));
+    const sigImg = await pdf.embedPng(sigBytes);
+    const SIG_W = 180;
+    const SIG_H = Math.round((sigImg.height / sigImg.width) * SIG_W);
+    const sigX = R - SIG_W;
+    page.drawImage(sigImg, { x: sigX, y: y - SIG_H, width: SIG_W, height: SIG_H });
+    page.drawLine({ start: { x: sigX, y: y - SIG_H - 4 }, end: { x: R, y: y - SIG_H - 4 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
+  }
+
+  drawRight(page, `הופק אוטומטית · ${dateStr}`, R, 30, heebo, 8, rgb(0.6, 0.6, 0.6));
+  return pdf.save();
+}
+
+// ── PDF: Credit ───────────────────────────────────────────────────────────────
+async function buildCreditPdf(
+  soldier: SoldierInfo,
+  creditedItems: ItemLine[],
   performedBy: string,
   timestamp: string,
 ): Promise<Uint8Array> {
@@ -108,156 +228,64 @@ async function buildPdf(
   pdf.registerFontkit(fontkit);
   const heebo = await pdf.embedFont(fontBytes, { subset: true });
 
-  // Embed signature PNG
-  const sigBytes = Uint8Array.from(atob(signaturePngB64), (c) => c.charCodeAt(0));
-  const sigImg = await pdf.embedPng(sigBytes);
-  const SIG_W = 180;
-  const SIG_H = Math.round((sigImg.height / sigImg.width) * SIG_W);
-
-  const page = pdf.addPage([595.28, 841.89]); // A4
-  const R = 545; // right margin X
-  const L = 50;  // left margin X
+  const page = pdf.addPage([595.28, 841.89]);
+  const R = 545; const L = 50;
   let y = 800;
 
-  const dateStr = new Date(timestamp).toLocaleString('he-IL', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: 'Asia/Jerusalem',
-  });
+  const dateStr = new Date(timestamp).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Jerusalem' });
 
-  // ── Title ──────────────────────────────────────────────────────────────────
-  drawRight(page, 'טופס החתמת נשק', R, y, heebo, 20);
+  drawRight(page, 'טופס זיכוי נשק', R, y, heebo, 20);
   y -= 32;
   page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: rgb(0.7, 0.7, 0.7) });
   y -= 18;
 
-  // ── Meta ───────────────────────────────────────────────────────────────────
-  const meta: [string, string][] = [
-    ['תאריך', dateStr],
-    ['בוצע ע״י', performedBy],
-  ];
-  for (const [k, v] of meta) {
-    drawRight(page, `${k}: ${v}`, R, y, heebo, 11);
-    y -= 16;
+  for (const [k, v] of [['תאריך', dateStr], ['בוצע ע״י', performedBy]] as [string, string][]) {
+    drawRight(page, `${k}: ${v}`, R, y, heebo, 11); y -= 16;
   }
   y -= 12;
 
-  // ── Soldier block ──────────────────────────────────────────────────────────
   drawRight(page, 'פרטי החייל', R, y, heebo, 14, rgb(0.15, 0.15, 0.15));
   y -= 22;
-
   const soldierLines: [string, string][] = [
-    ['שם מלא', soldier.full_name],
-    ['מספר אישי', soldier.personal_number],
-    ...(soldier.phone ? [['טלפון', soldier.phone] as [string, string]] : []),
+    ['שם מלא', soldier.full_name], ['מספר אישי', soldier.personal_number],
     ['מסגרת', soldier.unit_name],
-    ...(soldier.team_name ? [['צוות', soldier.team_name] as [string, string]] : []),
   ];
-  for (const [k, v] of soldierLines) {
-    drawRight(page, `${k}: ${v}`, R, y, heebo, 11);
-    y -= 16;
-  }
+  for (const [k, v] of soldierLines) { drawRight(page, `${k}: ${v}`, R, y, heebo, 11); y -= 16; }
   y -= 10;
   page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
   y -= 16;
 
-  // ── Items table ────────────────────────────────────────────────────────────
-  drawRight(page, `פריטים שנמסרו (${items.length})`, R, y, heebo, 14, rgb(0.15, 0.15, 0.15));
+  drawRight(page, `פריטים שזוכו (${creditedItems.length})`, R, y, heebo, 14, rgb(0.6, 0.1, 0.1));
   y -= 22;
 
-  const COL_NAME   = R;
-  const COL_SERIAL = L + 200;
-  const COL_QTY    = L + 55;
-
-  // header row
+  const CN = R; const CS = L + 200;
   page.drawLine({ start: { x: L, y: y + 4 }, end: { x: R, y: y + 4 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
-  drawRight(page, 'שם פריט',  COL_NAME,   y - 12, heebo, 10, rgb(0.4, 0.4, 0.4));
-  drawRight(page, "מ.ס / צ'", COL_SERIAL, y - 12, heebo, 10, rgb(0.4, 0.4, 0.4));
-  drawRight(page, 'כמות',     COL_QTY,    y - 12, heebo, 10, rgb(0.4, 0.4, 0.4));
+  drawRight(page, 'שם פריט', CN, y - 12, heebo, 10, rgb(0.4, 0.4, 0.4));
+  drawRight(page, "מ.ס / צ'", CS, y - 12, heebo, 10, rgb(0.4, 0.4, 0.4));
   y -= 22;
   page.drawLine({ start: { x: L, y: y + 4 }, end: { x: R, y: y + 4 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
 
-  for (const item of items) {
-    drawRight(page, item.name,               COL_NAME,   y - 12, heebo, 11);
-    drawRight(page, item.serial || '—',      COL_SERIAL, y - 12, heebo, 11);
-    drawRight(page, String(item.quantity),   COL_QTY,    y - 12, heebo, 11);
+  for (const item of creditedItems) {
+    drawRight(page, item.name, CN, y - 12, heebo, 11);
+    drawRight(page, item.serial || '—', CS, y - 12, heebo, 11);
     y -= 18;
   }
   page.drawLine({ start: { x: L, y: y + 4 }, end: { x: R, y: y + 4 }, thickness: 0.3, color: rgb(0.9, 0.9, 0.9) });
 
-  // ── Signature ──────────────────────────────────────────────────────────────
-  y -= 24;
-  drawRight(page, 'חתימת החייל:', R, y, heebo, 11, rgb(0.3, 0.3, 0.3));
-  y -= 10;
-
-  // Right-align signature image
-  const sigX = R - SIG_W;
-  const sigY = y - SIG_H;
-  page.drawImage(sigImg, { x: sigX, y: sigY, width: SIG_W, height: SIG_H });
-
-  // Underline below signature
-  page.drawLine({
-    start: { x: sigX, y: sigY - 4 },
-    end:   { x: R,    y: sigY - 4 },
-    thickness: 0.5,
-    color: rgb(0.6, 0.6, 0.6),
-  });
-
-  // ── Footer ─────────────────────────────────────────────────────────────────
   drawRight(page, `הופק אוטומטית · ${dateStr}`, R, 30, heebo, 8, rgb(0.6, 0.6, 0.6));
-
   return pdf.save();
 }
 
-// ── Google Drive upload ───────────────────────────────────────────────────────
-async function uploadToDrive(
-  token: string,
-  folderId: string,
-  filename: string,
-  pdfBytes: Uint8Array,
-): Promise<string> {
-  const boundary = 'weapons_checkout_' + Date.now();
-  const metadata = JSON.stringify({
-    name: filename,
-    mimeType: 'application/pdf',
-    parents: [folderId],
-  });
+// ── CORS + JSON helper ────────────────────────────────────────────────────────
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+const jsonRes = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-  const enc = new TextEncoder();
-  const parts: Uint8Array[] = [
-    enc.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`),
-    enc.encode(`--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`),
-    pdfBytes,
-    enc.encode(`\r\n--${boundary}--`),
-  ];
-
-  const totalLen = parts.reduce((s, p) => s + p.length, 0);
-  const body = new Uint8Array(totalLen);
-  let offset = 0;
-  for (const p of parts) { body.set(p, offset); offset += p.length; }
-
-  const res = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': `multipart/related; boundary=${boundary}`,
-      },
-      body,
-    },
-  );
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Drive upload failed (${res.status}): ${text}`);
-  }
-
-  const file = await res.json() as { id: string };
-  return `https://drive.google.com/file/d/${file.id}/view`;
-}
-
-// ── Main handler ──────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -266,62 +294,105 @@ serve(async (req) => {
     const serviceKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const anonKey     = Deno.env.get('SUPABASE_ANON_KEY')!;
     const saJson      = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
-    const folderId    = Deno.env.get('WEAPONS_CHECKOUT_DRIVE_FOLDER_ID');
+    const rootFolder  = Deno.env.get('WEAPONS_CHECKOUT_DRIVE_FOLDER_ID');
 
-    if (!saJson || !folderId) {
-      return jsonRes({ ok: false, error: 'Missing GOOGLE_SERVICE_ACCOUNT_JSON or WEAPONS_CHECKOUT_DRIVE_FOLDER_ID secret' }, 500);
+    if (!saJson || !rootFolder) {
+      return jsonRes({ ok: false, error: 'Missing GOOGLE_SERVICE_ACCOUNT_JSON or WEAPONS_CHECKOUT_DRIVE_FOLDER_ID' }, 500);
     }
 
     // Auth
     const authHeader = req.headers.get('Authorization') ?? '';
     if (!authHeader) return jsonRes({ ok: false, error: 'Missing Authorization header' }, 401);
-
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
     const { data: who } = await userClient.auth.getUser();
     if (!who?.user) return jsonRes({ ok: false, error: 'Invalid token' }, 401);
 
-    // Parse body
     const body = await req.json().catch(() => null);
     if (!body) return jsonRes({ ok: false, error: 'Invalid JSON body' }, 400);
 
-    const { soldier, items, signature_png_b64, performed_by, timestamp } = body;
-    if (!soldier?.full_name || !soldier?.personal_number || !items || !signature_png_b64 || !performed_by) {
-      return jsonRes({ ok: false, error: 'Missing required fields: soldier, items, signature_png_b64, performed_by' }, 400);
+    const { type, soldier, performed_by, timestamp } = body;
+    if (!soldier?.full_name || !soldier?.personal_number || !soldier?.unit_name || !performed_by) {
+      return jsonRes({ ok: false, error: 'Missing soldier / performed_by' }, 400);
+    }
+    const now = timestamp ?? new Date().toISOString();
+    const filename = `${safeFilename(soldier.full_name)}.pdf`;
+
+    const token = await getGoogleAccessToken(saJson, DRIVE_SCOPE);
+    const sb = createClient(supabaseUrl, serviceKey);
+
+    // ── CHECKOUT ──────────────────────────────────────────────────────────────
+    if (type === 'checkout' || !type) {
+      const { items, signature_png_b64 } = body;
+      if (!items || !signature_png_b64) return jsonRes({ ok: false, error: 'Missing items or signature_png_b64' }, 400);
+
+      const pdfBytes = await buildCheckoutPdf(soldier, items, signature_png_b64, performed_by, now);
+      const folderId = await resolvePath(token, rootFolder, ['נשקיה', soldier.unit_name, 'החתמות']);
+      const url = await upsertPdf(token, folderId, filename, pdfBytes);
+
+      await sb.from('audit_logs').insert({
+        action: 'weapons.checkout_pdf_uploaded',
+        performed_by: who.user.id,
+        details: { soldier_pn: soldier.personal_number, items_count: items.length, drive_url: url, bytes: pdfBytes.length },
+      });
+
+      return jsonRes({ ok: true, url });
     }
 
-    // Build PDF
-    const pdfBytes = await buildPdf(
-      soldier,
-      items,
-      signature_png_b64,
-      performed_by,
-      timestamp ?? new Date().toISOString(),
-    );
+    // ── CREDIT ────────────────────────────────────────────────────────────────
+    if (type === 'credit') {
+      const { credited_items } = body;
+      if (!credited_items?.length) return jsonRes({ ok: false, error: 'Missing credited_items' }, 400);
 
-    // Upload to Drive
-    const token = await getGoogleAccessToken(saJson, DRIVE_SCOPE);
-    const dateTag = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const filename = `checkout_${soldier.personal_number}_${dateTag}.pdf`;
-    const driveUrl = await uploadToDrive(token, folderId, filename, pdfBytes);
+      // 1. Build + upload credit PDF
+      const creditBytes = await buildCreditPdf(soldier, credited_items, performed_by, now);
+      const creditFolder = await resolvePath(token, rootFolder, ['נשקיה', soldier.unit_name, 'זיכויים']);
+      const creditUrl = await upsertPdf(token, creditFolder, filename, creditBytes);
 
-    // Audit log
-    const sb = createClient(supabaseUrl, serviceKey);
-    await sb.from('audit_logs').insert({
-      action: 'weapons.checkout_pdf_uploaded',
-      performed_by: who.user.id,
-      target_type: 'soldier',
-      details: {
-        soldier_pn: soldier.personal_number,
-        soldier_name: soldier.full_name,
-        items_count: items.length,
-        drive_url: driveUrl,
-        bytes: pdfBytes.length,
-      },
-    });
+      // 2. Query remaining assignments
+      const { data: remaining } = await sb
+        .from('weapons_item_serials')
+        .select('item_id, serial_number, weapons_items(name)')
+        .eq('assigned_to_pn', soldier.personal_number)
+        .not('assigned_to_pn', 'is', null);
 
-    return jsonRes({ ok: true, url: driveUrl });
+      let checkoutUrl: string | null = null;
+      const checkoutFolder = await resolvePath(token, rootFolder, ['נשקיה', soldier.unit_name, 'החתמות']);
+
+      if (remaining && remaining.length > 0) {
+        // Partial credit → update checkout PDF with remaining items
+        const remainingItems: ItemLine[] = (remaining as any[]).map((r) => ({
+          name: r.weapons_items?.name ?? r.item_id,
+          serial: r.serial_number,
+          quantity: 1,
+        }));
+        const dateStr = new Date(now).toLocaleString('he-IL', { dateStyle: 'short', timeZone: 'Asia/Jerusalem' });
+        const checkoutBytes = await buildCheckoutPdf(
+          soldier, remainingItems, null, performed_by, now,
+          `עודכן לאחר זיכוי חלקי · ${dateStr}`,
+        );
+        checkoutUrl = await upsertPdf(token, checkoutFolder, filename, checkoutBytes);
+      } else {
+        // Full credit → remove checkout PDF
+        await deleteExistingFiles(token, checkoutFolder, filename);
+      }
+
+      await sb.from('audit_logs').insert({
+        action: 'weapons.credit_pdf_uploaded',
+        performed_by: who.user.id,
+        details: {
+          soldier_pn: soldier.personal_number,
+          credited_count: credited_items.length,
+          remaining_count: remaining?.length ?? 0,
+          credit_url: creditUrl,
+          checkout_url: checkoutUrl,
+        },
+      });
+
+      return jsonRes({ ok: true, credit_url: creditUrl, checkout_url: checkoutUrl });
+    }
+
+    return jsonRes({ ok: false, error: `Unknown type: ${type}` }, 400);
+
   } catch (e) {
     console.error('[generate-weapon-checkout-pdf]', e);
     return jsonRes({ ok: false, error: (e as Error).message }, 500);

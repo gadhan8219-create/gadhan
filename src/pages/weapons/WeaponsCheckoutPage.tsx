@@ -41,6 +41,101 @@ interface EditForm {
 
 type Mode = 'existing' | 'new';
 
+// ── Serial Picker ─────────────────────────────────────────────────────────────
+// Dropdown that only allows selecting from the available-serials list.
+// `value` = confirmed selection; parent receives '' until a valid serial is chosen.
+
+function SerialPicker({
+  serials,
+  value,
+  onChange,
+}: {
+  serials: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [query, setQuery]   = useState(value);
+  const [open,  setOpen]    = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Sync display when parent clears value
+  useEffect(() => { if (!value) setQuery(''); }, [value]);
+
+  // Close dropdown on outside click; revert query if not confirmed
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        if (query && !serials.includes(query)) setQuery(value); // revert invalid
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [query, value, serials]);
+
+  const filtered = serials.filter((s) =>
+    !query.trim() || s.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+  const isInvalid = !!query.trim() && !serials.includes(query.trim());
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="relative">
+        <input
+          className={`input text-sm font-mono ${
+            isInvalid ? 'border-red-400 bg-red-50' :
+            value      ? 'border-emerald-400 bg-emerald-50' : ''
+          }`}
+          dir="ltr"
+          placeholder="הקלד או בחר מ.ס..."
+          autoComplete="off"
+          value={query}
+          onChange={(e) => {
+            const v = e.target.value;
+            setQuery(v);
+            setOpen(true);
+            // Auto-confirm on exact match
+            onChange(serials.includes(v.trim()) ? v.trim() : '');
+          }}
+          onFocus={() => setOpen(true)}
+        />
+        {query && (
+          <button
+            type="button"
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-lg leading-none"
+            onMouseDown={(e) => { e.preventDefault(); setQuery(''); onChange(''); setOpen(false); }}>
+            ×
+          </button>
+        )}
+      </div>
+      {isInvalid && (
+        <p className="text-xs text-red-500 mt-0.5">מספר סידורי לא קיים ברשימה</p>
+      )}
+      {open && (
+        filtered.length > 0 ? (
+          <ul className="absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-44 overflow-auto">
+            {filtered.map((s) => (
+              <li
+                key={s}
+                onMouseDown={(e) => { e.preventDefault(); setQuery(s); onChange(s); setOpen(false); }}
+                className={`px-3 py-2 text-sm font-mono cursor-pointer hover:bg-slate-50 ${
+                  s === value ? 'bg-emerald-50 text-emerald-700 font-semibold' : ''
+                }`}
+                dir="ltr">
+                {s}
+              </li>
+            ))}
+          </ul>
+        ) : query.trim() ? (
+          <div className="absolute z-30 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow p-2 text-sm text-slate-400 text-center">
+            לא נמצא ברשימה
+          </div>
+        ) : null
+      )}
+    </div>
+  );
+}
+
 // ── Signature Pad ─────────────────────────────────────────────────────────────
 
 interface SignaturePadHandle {
@@ -339,8 +434,14 @@ export default function WeaponsCheckoutPage() {
 
     for (const [itemId, sel] of newItems) {
       const item = weaponItems.find((i) => i.id === itemId);
-      if (item?.has_serials && !sel.serial.trim()) {
-        setError(`נא להזין מספר סידורי עבור: ${item.name}`); return;
+      if (item?.has_serials) {
+        if (!sel.serial.trim()) {
+          setError(`נא לבחור מספר סידורי עבור: ${item.name}`); return;
+        }
+        const free = availableSerials[item.id] ?? [];
+        if (!free.includes(sel.serial.trim())) {
+          setError(`מספר סידורי לא קיים ברשימה עבור: ${item.name}`); return;
+        }
       }
     }
 
@@ -639,53 +740,79 @@ export default function WeaponsCheckoutPage() {
           ) : (
             <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1">
               {filteredItems.map((item) => {
-                const isSelected  = !!selected[item.id];
-                const isPreloaded = selected[item.id]?.preloaded === true;
-                const free        = availableSerials[item.id] ?? [];
+                const isSelected   = !!selected[item.id];
+                const isPreloaded  = selected[item.id]?.preloaded === true;
+                const free         = availableSerials[item.id] ?? [];
+                const noSerials    = item.has_serials && free.length === 0 && !isPreloaded;
 
                 return (
                   <div key={item.id}
                     className={`rounded-lg border transition ${
                       isPreloaded ? 'border-amber-300 bg-amber-50' :
-                      isSelected  ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200'
+                      isSelected  ? 'border-emerald-400 bg-emerald-50' :
+                      noSerials   ? 'border-slate-200 opacity-50' : 'border-slate-200'
                     }`}>
-                    <label className="flex items-center gap-3 p-3 cursor-pointer">
-                      <input type="checkbox" className="accent-emerald-600 w-4 h-4 shrink-0"
-                        checked={isSelected} onChange={() => toggle(item)} />
+                    <label className={`flex items-center gap-3 p-3 ${noSerials ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <input
+                        type="checkbox"
+                        className="accent-emerald-600 w-4 h-4 shrink-0"
+                        checked={isSelected}
+                        disabled={noSerials}
+                        onChange={() => toggle(item)}
+                      />
                       <span className="text-sm font-medium text-slate-800 flex-1">{item.name}</span>
                       {isPreloaded && <span className="text-xs text-amber-600 shrink-0">בהחזקה</span>}
-                      {!isPreloaded && item.has_serials && free.length === 0 && (
-                        <span className="text-xs text-amber-600 shrink-0">כל הצ'ים משויכים</span>
+                      {noSerials   && <span className="text-xs text-slate-400 shrink-0">כל הצ׳ים משויכים</span>}
+                      {!isPreloaded && item.has_serials && free.length > 0 && (
+                        <span className="text-xs text-slate-400 shrink-0">{free.length} זמינים</span>
+                      )}
+                      {!isPreloaded && !item.has_serials && item.quantity != null && (
+                        <span className="text-xs text-slate-400 shrink-0">מלאי: {item.quantity}</span>
                       )}
                     </label>
 
                     {isSelected && (
                       <div className="px-3 pb-3">
                         {item.has_serials ? (
-                          <>
-                            <label className="label text-xs">מספר סידורי (צ׳)</label>
-                            <input
-                              className={`input text-sm font-mono ${isPreloaded ? 'bg-amber-50' : ''}`}
-                              dir="ltr"
-                              placeholder={free.length > 0 ? 'הזן או בחר מהרשימה' : 'הזן ידנית'}
-                              list={`serials-${item.id}`}
-                              value={selected[item.id].serial}
-                              readOnly={isPreloaded}
-                              onChange={(e) => !isPreloaded && setSelected((p) => ({ ...p, [item.id]: { ...p[item.id], serial: e.target.value } }))}
-                            />
-                            {!isPreloaded && free.length > 0 && (
-                              <datalist id={`serials-${item.id}`}>
-                                {free.map((s) => <option key={s} value={s} />)}
-                              </datalist>
-                            )}
-                          </>
+                          isPreloaded ? (
+                            <>
+                              <label className="label text-xs">מספר סידורי (צ׳)</label>
+                              <input
+                                className="input text-sm font-mono bg-amber-50"
+                                dir="ltr"
+                                value={selected[item.id].serial}
+                                readOnly
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <label className="label text-xs">מספר סידורי (צ׳)</label>
+                              <SerialPicker
+                                serials={free}
+                                value={selected[item.id].serial}
+                                onChange={(v) => setSelected((p) => ({ ...p, [item.id]: { ...p[item.id], serial: v } }))}
+                              />
+                            </>
+                          )
                         ) : (
                           <>
-                            <label className="label text-xs">כמות</label>
-                            <input type="number" min={1} className="input text-sm w-24"
+                            <label className="label text-xs">
+                              כמות
+                              {item.quantity != null && <span className="text-slate-400 font-normal"> (מקסימום {item.quantity})</span>}
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={item.quantity ?? 9999}
+                              className="input text-sm w-28"
                               value={selected[item.id].quantity}
                               readOnly={isPreloaded}
-                              onChange={(e) => !isPreloaded && setSelected((p) => ({ ...p, [item.id]: { ...p[item.id], quantity: e.target.value } }))}
+                              onChange={(e) => {
+                                if (isPreloaded) return;
+                                const max = item.quantity ?? 9999;
+                                const v = Math.min(Math.max(1, parseInt(e.target.value) || 1), max);
+                                setSelected((p) => ({ ...p, [item.id]: { ...p[item.id], quantity: String(v) } }));
+                              }}
                             />
                           </>
                         )}

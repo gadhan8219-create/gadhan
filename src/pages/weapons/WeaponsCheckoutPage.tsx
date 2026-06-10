@@ -342,18 +342,32 @@ export default function WeaponsCheckoutPage() {
     try {
       const now = new Date().toISOString();
 
-      // 1. Save serial assignments to DB
+      // 1. Save assignments to DB
       const dbUpdates: PromiseLike<unknown>[] = [];
       for (const line of validLines) {
         const item = weaponItems.find((i) => i.id === line.itemId);
-        if (!item?.has_serials || !line.serial.trim()) continue;
-        dbUpdates.push(
-          supabase.from('weapons_item_serials')
-            .update({ assigned_to_pn: activePN, assigned_to_name: activeName, assigned_at: now })
-            .eq('item_id', line.itemId)
-            .eq('serial_number', line.serial.trim())
-            .then()
-        );
+        if (!item) continue;
+
+        if (item.has_serials && line.serial.trim()) {
+          // Serial item → assign the specific serial to the soldier
+          dbUpdates.push(
+            supabase.from('weapons_item_serials')
+              .update({ assigned_to_pn: activePN, assigned_to_name: activeName, assigned_at: now })
+              .eq('item_id', line.itemId)
+              .eq('serial_number', line.serial.trim())
+              .then()
+          );
+        } else if (!item.has_serials) {
+          // Non-serial item → decrement stock quantity
+          const qty = parseInt(line.quantity) || 1;
+          const currentQty = item.quantity ?? 0;
+          dbUpdates.push(
+            supabase.from('weapons_items')
+              .update({ quantity: Math.max(0, currentQty - qty) })
+              .eq('id', line.itemId)
+              .then()
+          );
+        }
       }
       await Promise.all(dbUpdates);
 

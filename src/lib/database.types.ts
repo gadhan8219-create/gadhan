@@ -67,6 +67,9 @@ export interface WeaponsItemSerial {
   id: string;
   item_id: string;
   serial_number: string;
+  assigned_to_pn: string | null;   // NULL = available
+  assigned_to_name: string | null;
+  assigned_at: string | null;
   created_at: string;
 }
 

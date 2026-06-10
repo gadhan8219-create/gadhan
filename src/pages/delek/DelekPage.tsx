@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../lib/auth';
+import { goodiLookup } from './fuelApi';
 
 type Tab = 'fuel' | 'balance';
 
@@ -10,6 +13,7 @@ interface FuelForm {
 }
 
 export default function DelekPage() {
+  const { profile } = useAuth();
   const [tab, setTab] = useState<Tab>('fuel');
   const [fuelForm, setFuelForm] = useState<FuelForm>({
     cardNumber: '',
@@ -49,11 +53,44 @@ export default function DelekPage() {
 
     setFuelLoading(true);
     setFuelResult(null);
-    // TODO: Supabase Storage + log
-    await new Promise((r) => setTimeout(r, 1000));
-    setFuelResult({ ok: true, msg: `כרטיס ${cardNumber} · ${driverName}` });
-    setFuelForm({ cardNumber: '', driverName: '', receiptFile: null, receiptPreview: null });
-    setFuelLoading(false);
+    try {
+      const cn = cardNumber.trim();
+      // Verify the card is in the roster (and grab its fuel type for the log).
+      const { data: card, error: cardErr } = await supabase
+        .from('fuel_cards')
+        .select('card_number, fuel_type')
+        .eq('card_number', cn)
+        .maybeSingle();
+      if (cardErr) throw cardErr;
+      if (!card) throw new Error(`כרטיס ${cn} לא קיים במערכת`);
+
+      // Upload the receipt to Storage: fuel-receipts/{card}/{driver date}.ext
+      const ext = (receiptFile.name.split('.').pop() || 'jpg').toLowerCase();
+      const dateStr = new Date().toLocaleDateString('he-IL').replace(/\//g, '-');
+      const path = `${cn}/${driverName.trim()} ${dateStr}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('fuel-receipts')
+        .upload(path, receiptFile, { contentType: receiptFile.type || 'image/jpeg', upsert: true });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('fuel-receipts').getPublicUrl(path);
+
+      // Log the fueling.
+      const { error: logErr } = await supabase.from('fuel_logs').insert({
+        card_number:  cn,
+        fuel_type:    card.fuel_type ?? null,
+        driver_name:  driverName.trim(),
+        receipt_url:  pub.publicUrl,
+        performed_by: profile?.id ?? null,
+      });
+      if (logErr) throw logErr;
+
+      setFuelResult({ ok: true, msg: `כרטיס ${cn} · ${driverName}` });
+      setFuelForm({ cardNumber: '', driverName: '', receiptFile: null, receiptPreview: null });
+    } catch (e) {
+      setFuelResult({ ok: false, msg: (e as Error).message });
+    } finally {
+      setFuelLoading(false);
+    }
   }
 
   async function checkBalance() {
@@ -61,10 +98,23 @@ export default function DelekPage() {
     setBalanceLoading(true);
     setBalanceError(null);
     setBalanceResult(null);
-    // TODO: Supabase
-    await new Promise((r) => setTimeout(r, 700));
-    setBalanceError('חיבור ל-Supabase טרם הוגדר — בשלב הבא');
-    setBalanceLoading(false);
+    try {
+      const card = await goodiLookup(balanceCard.trim());
+      if (!card) { setBalanceError(`כרטיס ${balanceCard} לא נמצא בגודי`); return; }
+      setBalanceResult({
+        cardName:   card.cardName,
+        cardNumber: card.cardNumber,
+        fuelType:   card.fuelType,
+        litersLeft: card.litersLeft,
+        litersUsed: card.litersUsed,
+        amountUsed: card.amountUsed,
+        lastUsage:  card.lastUsage,
+      });
+    } catch (e) {
+      setBalanceError((e as Error).message);
+    } finally {
+      setBalanceLoading(false);
+    }
   }
 
   return (

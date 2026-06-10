@@ -110,7 +110,7 @@ export default function Layout() {
           ))}
 
           {/* ── קשר ── */}
-          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">📻 קשר</div>
+          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">קשר</div>
           {radioItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
           ))}
@@ -141,7 +141,7 @@ export default function Layout() {
           </div>
 
           {/* ── נשק ── */}
-          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">🔫 נשק</div>
+          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">נשק</div>
           {weaponsItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
           ))}
@@ -150,7 +150,7 @@ export default function Layout() {
           ))}
 
           {/* ── דלק ── */}
-          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">⛽ דלק</div>
+          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">דלק</div>
           {delekItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
           ))}

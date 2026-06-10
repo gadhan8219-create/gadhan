@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import type { WeaponsItem } from '../../lib/database.types';
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SoldierRow {
   id: string;
@@ -41,10 +41,119 @@ interface EditForm {
 
 type Mode = 'existing' | 'new';
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Signature Pad ─────────────────────────────────────────────────────────────
+
+interface SignaturePadHandle {
+  isEmpty: () => boolean;
+  toDataUrl: () => string; // base64 PNG, no data: prefix
+  clear: () => void;
+}
+
+const SignaturePad = forwardRef<SignaturePadHandle>((_props, ref) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing   = useRef(false);
+  const drawn     = useRef(false);
+  const [empty, setEmpty] = useState(true);
+
+  function initCtx(canvas: HTMLCanvasElement) {
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth   = 2.5;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) initCtx(canvas);
+  }, []);
+
+  // Map CSS client coords → canvas pixel coords
+  function toCanvasPos(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((clientX - rect.left)  / rect.width)  * canvas.width,
+      y: ((clientY - rect.top)   / rect.height) * canvas.height,
+    };
+  }
+
+  function startDraw(clientX: number, clientY: number) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const p = toCanvasPos(canvas, clientX, clientY);
+    const ctx = canvas.getContext('2d')!;
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    drawing.current = true;
+  }
+
+  function continueDraw(clientX: number, clientY: number) {
+    if (!drawing.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const p = toCanvasPos(canvas, clientX, clientY);
+    const ctx = canvas.getContext('2d')!;
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    drawn.current = true;
+    setEmpty(false);
+  }
+
+  function stopDraw() { drawing.current = false; }
+
+  function clear() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    initCtx(canvas);
+    drawn.current = false;
+    setEmpty(true);
+  }
+
+  useImperativeHandle(ref, () => ({
+    isEmpty: () => !drawn.current,
+    toDataUrl: () => canvasRef.current?.toDataURL('image/png').split(',')[1] ?? '',
+    clear,
+  }));
+
+  return (
+    <div>
+      <canvas
+        ref={canvasRef}
+        width={600}
+        height={140}
+        className="w-full border border-slate-200 rounded-lg cursor-crosshair touch-none bg-white"
+        style={{ height: '120px' }}
+        onMouseDown={(e) => startDraw(e.clientX, e.clientY)}
+        onMouseMove={(e) => continueDraw(e.clientX, e.clientY)}
+        onMouseUp={stopDraw}
+        onMouseLeave={stopDraw}
+        onTouchStart={(e) => { e.preventDefault(); const t = e.touches[0]; startDraw(t.clientX, t.clientY); }}
+        onTouchMove={(e)  => { e.preventDefault(); const t = e.touches[0]; continueDraw(t.clientX, t.clientY); }}
+        onTouchEnd={(e)   => { e.preventDefault(); stopDraw(); }}
+      />
+      <div className="flex justify-between items-center mt-1.5">
+        <span className={`text-xs ${empty ? 'text-slate-400' : 'text-emerald-600 font-medium'}`}>
+          {empty ? 'חתום כאן...' : 'חתימה הוזנה ✓'}
+        </span>
+        {!empty && (
+          <button type="button" onClick={clear}
+            className="text-xs text-slate-400 hover:text-red-500 transition">
+            נקה
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
+SignaturePad.displayName = 'SignaturePad';
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function WeaponsCheckoutPage() {
   const { profile } = useAuth();
+  const sigPadRef = useRef<SignaturePadHandle>(null);
 
   // DB data
   const [soldiers, setSoldiers] = useState<SoldierRow[]>([]);
@@ -82,6 +191,7 @@ export default function WeaponsCheckoutPage() {
   // UI state
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // ── Load DB ──────────────────────────────────────────────────────────────
@@ -149,7 +259,7 @@ export default function WeaponsCheckoutPage() {
     setEditMode(false);
     setEditForm({ phone: s.phone ?? '', unit_id: s.unit_id, team_id: s.team_id ?? '', busy: false });
 
-    // Load assignments and pre-populate items list
+    // Load current assignments → pre-populate items
     const { data } = await supabase
       .from('weapons_item_serials')
       .select('item_id, serial_number, assigned_at, weapons_items(name)')
@@ -166,7 +276,6 @@ export default function WeaponsCheckoutPage() {
       }));
       setAssignments(asgn);
 
-      // Pre-populate selected items with existing assignments
       const preloaded: Record<string, SelectedItem> = {};
       for (const a of asgn) {
         preloaded[a.item_id] = { serial: a.serial_number, quantity: '1', preloaded: true };
@@ -187,28 +296,19 @@ export default function WeaponsCheckoutPage() {
     }).eq('id', selectedSoldier.id);
     if (error) { alert(error.message); setEditForm((f) => ({ ...f, busy: false })); return; }
 
-    // Refresh soldier in state
     const unitName = units.find((u) => u.id === editForm.unit_id)?.name ?? '—';
     const teamName = teams.find((t) => t.id === editForm.team_id)?.name ?? null;
-    const updated: SoldierRow = {
-      ...selectedSoldier,
-      phone: editForm.phone.trim() || null,
-      unit_id: editForm.unit_id,
-      team_id: editForm.team_id || null,
-      unit_name: unitName,
-      team_name: teamName,
-    };
-    setSelectedSoldier(updated);
+    setSelectedSoldier({ ...selectedSoldier, phone: editForm.phone.trim() || null, unit_id: editForm.unit_id, team_id: editForm.team_id || null, unit_name: unitName, team_name: teamName });
     setEditMode(false);
     setEditForm((f) => ({ ...f, busy: false }));
   }
 
-  // ── Derived values ────────────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────
 
   const filteredTeamsForEdit = teams.filter((t) => t.unit_id === editForm.unit_id);
   const filteredTeamsForNew  = teams.filter((t) => t.unit_id === newUnitId);
-  const filteredItems = weaponItems.filter((i) => i.name.includes(search));
-  const newCount      = Object.values(selected).filter((s) => !s.preloaded).length;
+  const filteredItems        = weaponItems.filter((i) => i.name.includes(search));
+  const newCount             = Object.values(selected).filter((s) => !s.preloaded).length;
 
   const activePN   = mode === 'existing' ? selectedSoldier?.personal_number ?? '' : newPN;
   const activeName = mode === 'existing' ? selectedSoldier?.full_name ?? '' : newName;
@@ -228,10 +328,12 @@ export default function WeaponsCheckoutPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
     if (mode === 'existing' && !selectedSoldier) { setError('נא לבחור חייל מהרשימה'); return; }
     if (mode === 'new' && (!newPN || !newName || !newPhone || !newUnitId || !newTeamId)) {
       setError('נא למלא את כל שדות החייל'); return;
     }
+
     const newItems = Object.entries(selected).filter(([, s]) => !s.preloaded);
     if (newItems.length === 0) { setError('נא לבחור לפחות פריט חדש להחתמה'); return; }
 
@@ -242,16 +344,22 @@ export default function WeaponsCheckoutPage() {
       }
     }
 
+    if (sigPadRef.current?.isEmpty()) {
+      setError('נא לחתום לפני השליחה'); return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       const now = new Date().toISOString();
-      const updates: PromiseLike<unknown>[] = [];
+
+      // 1. Save serial assignments to DB
+      const dbUpdates: PromiseLike<unknown>[] = [];
       for (const [itemId, sel] of newItems) {
         const item = weaponItems.find((i) => i.id === itemId);
-        if (!item || !item.has_serials || !sel.serial.trim()) continue;
-        updates.push(
+        if (!item?.has_serials || !sel.serial.trim()) continue;
+        dbUpdates.push(
           supabase.from('weapons_item_serials')
             .update({ assigned_to_pn: activePN, assigned_to_name: activeName, assigned_at: now })
             .eq('item_id', itemId)
@@ -259,10 +367,57 @@ export default function WeaponsCheckoutPage() {
             .then()
         );
       }
-      await Promise.all(updates);
+      await Promise.all(dbUpdates);
+
+      // 2. Build items payload for PDF
+      const itemsPayload = newItems.map(([itemId, sel]) => {
+        const item = weaponItems.find((i) => i.id === itemId);
+        return {
+          name:     item?.name ?? itemId,
+          serial:   item?.has_serials ? sel.serial.trim() : null,
+          quantity: item?.has_serials ? 1 : (parseInt(sel.quantity) || 1),
+        };
+      });
+
+      // 3. Gather soldier info for PDF
+      const unitName = mode === 'existing'
+        ? selectedSoldier!.unit_name
+        : (units.find((u) => u.id === newUnitId)?.name ?? '');
+      const teamName = mode === 'existing'
+        ? (selectedSoldier!.team_name ?? undefined)
+        : (teams.find((t) => t.id === newTeamId)?.name ?? undefined);
+      const phone = mode === 'existing'
+        ? (selectedSoldier!.phone ?? undefined)
+        : newPhone || undefined;
+
+      // 4. Call edge function: generate PDF + upload to Drive
+      const signaturePng = sigPadRef.current!.toDataUrl();
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-weapon-checkout-pdf`;
+      const resp = await fetch(fnUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session?.access_token ?? ''}`,
+          'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          soldier: { full_name: activeName, personal_number: activePN, phone, unit_name: unitName, team_name: teamName },
+          items:   itemsPayload,
+          signature_png_b64: signaturePng,
+          performed_by: profile?.full_name ?? '',
+          timestamp: now,
+        }),
+      });
+
+      const result = await resp.json();
+      if (!result.ok) throw new Error(result.error ?? 'שגיאה בהפקת הקובץ');
+
+      setPdfUrl(result.url as string);
       setSuccess(true);
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -272,20 +427,42 @@ export default function WeaponsCheckoutPage() {
     setMode('existing');
     setSoldierSearch(''); setSelectedSoldier(null); setAssignments([]); setEditMode(false);
     setNewPN(''); setNewName(''); setNewPhone(''); setNewUnitId(''); setNewTeamId('');
-    setSelected({}); setSearch(''); setSuccess(false); setError(null);
+    setSelected({}); setSearch(''); setSuccess(false); setPdfUrl(null); setError(null);
+    sigPadRef.current?.clear();
     loadAll();
   }
 
-  // ── Success ───────────────────────────────────────────────────────────────
+  // ── Success screen ────────────────────────────────────────────────────────
 
   if (success) {
     return (
       <div className="max-w-lg mx-auto text-center py-16">
-        <div className="card">
-          <h2 className="text-xl font-bold text-slate-800 mb-2">הדוח נשמר בהצלחה</h2>
-          <p className="text-slate-500 mb-2">{activeName} · {activePN}</p>
-          <p className="text-slate-500 mb-6">{newCount} פריטים חדשים נרשמו</p>
-          <button className="btn-primary" onClick={reset}>דוח חדש</button>
+        <div className="card space-y-5">
+          <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+            <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">הדוח נשלח בהצלחה</h2>
+            <p className="text-slate-500 mt-1">{activeName} · {activePN}</p>
+            <p className="text-slate-400 text-sm">{newCount} פריטים חדשים נרשמו</p>
+          </div>
+          {pdfUrl && (
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition border border-blue-200 mx-auto"
+            >
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              פתח PDF בגוגל Drive
+            </a>
+          )}
+          <button className="btn-primary w-full" onClick={reset}>דוח חדש</button>
         </div>
       </div>
     );
@@ -345,7 +522,7 @@ export default function WeaponsCheckoutPage() {
               </div>
 
               {selectedSoldier && !editMode && (
-                <div className="bg-slate-50 rounded-lg p-3 text-sm space-y-2">
+                <div className="bg-slate-50 rounded-lg p-3 text-sm">
                   <div className="flex items-start justify-between">
                     <div className="flex flex-wrap gap-x-6 gap-y-1">
                       <span><span className="text-slate-500">שם: </span><span className="font-medium">{selectedSoldier.full_name}</span></span>
@@ -461,9 +638,9 @@ export default function WeaponsCheckoutPage() {
           ) : (
             <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1">
               {filteredItems.map((item) => {
-                const isSelected = !!selected[item.id];
+                const isSelected  = !!selected[item.id];
                 const isPreloaded = selected[item.id]?.preloaded === true;
-                const free = availableSerials[item.id] ?? [];
+                const free        = availableSerials[item.id] ?? [];
 
                 return (
                   <div key={item.id}
@@ -523,12 +700,10 @@ export default function WeaponsCheckoutPage() {
           )}
         </div>
 
-        {/* ── חתימה ── */}
-        <div className="card space-y-2">
-          <h2 className="font-semibold text-slate-700">חתימה דיגיטלית</h2>
-          <div className="border-2 border-dashed border-slate-300 rounded-lg h-24 flex items-center justify-center text-slate-400 text-sm">
-            אזור חתימה — יצורף בשלב הבא
-          </div>
+        {/* ── חתימת החייל ── */}
+        <div className="card space-y-3">
+          <h2 className="font-semibold text-slate-700">חתימת החייל</h2>
+          <SignaturePad ref={sigPadRef} />
         </div>
 
         {error && (
@@ -536,7 +711,7 @@ export default function WeaponsCheckoutPage() {
         )}
 
         <button type="submit" className="btn-primary w-full" disabled={loading}>
-          {loading ? 'שומר...' : 'שמור דוח'}
+          {loading ? 'שולח...' : 'שלח'}
         </button>
       </form>
     </div>

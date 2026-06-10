@@ -79,12 +79,22 @@ hdr "בדיקות סביבה"
 }
 ok "תיקייה: $(pwd)"
 
-# בדיקת .env.local
-if [[ ! -f .env.local ]]; then
+# טען .env.local אם קיים (לקריאת SUPABASE_PROJECT_REF + SUPABASE_DB_PASSWORD)
+if [[ -f .env.local ]]; then
+  # export רק SUPABASE_* ו-VITE_* ללא שורות הערה
+  set -a
+  # shellcheck disable=SC1091
+  grep -E '^(SUPABASE_|VITE_)' .env.local | while IFS='=' read -r key val; do
+    export "$key"="$val"
+  done
+  # שיטה ישירה יותר
+  export SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY
+  eval "$(grep -E '^(SUPABASE_|VITE_)' .env.local | sed 's/^/export /')"
+  set +a
+  ok ".env.local נטען"
+else
   warn ".env.local לא נמצא — Supabase לא יעבוד"
   warn "צור .env.local לפי .env.example"
-else
-  ok ".env.local קיים"
 fi
 
 need() {
@@ -123,26 +133,87 @@ fi
 
 # ────────────── 3. Supabase migrations ──────────────────────────
 if [[ $SKIP_SUPABASE -eq 0 ]]; then
-  if [[ -d supabase/migrations ]]; then
-    PENDING=$(supabase db diff --use-migra 2>/dev/null | wc -l || echo 0)
+  if [[ ! -d supabase/migrations ]]; then
+    warn "אין תיקיית supabase/migrations — מדלג"
+  else
     hdr "Supabase migrations"
-    if confirm "Push migrations לDB?"; then
-      if echo "Y" | supabase db push 2>&1 | tee /tmp/gadhan-all-dbpush.log | tail -5; then
-        ok "Migrations הועלו"
+
+    # וודא שה-CLI מקושר לפרויקט עם סיסמת DB
+    if [[ -n "$SUPABASE_PROJECT_REF" && -n "$SUPABASE_DB_PASSWORD" ]]; then
+      supabase link \
+        --project-ref "$SUPABASE_PROJECT_REF" \
+        --password "$SUPABASE_DB_PASSWORD" 2>/dev/null || true
+      ok "Supabase מקושר: $SUPABASE_PROJECT_REF"
+    else
+      warn "SUPABASE_PROJECT_REF / SUPABASE_DB_PASSWORD חסרים ב-.env.local"
+      warn "הוסף אותם כדי לאפשר push אוטומטי של migrations"
+    fi
+
+    # בדוק אילו migrations ממתינות
+    say "  ${C_DIM}בודק migrations...${C_RST}"
+    MIG_OUT=$(supabase migration list 2>&1 || true)
+
+    # זיהוי חסימת רשת (TLS timeout / no route)
+    if echo "$MIG_OUT" | grep -qi "tls error\|no route to host\|i/o timeout"; then
+      warn "חיבור ישיר ל-DB חסום ברשת (TLS/firewall)"
+      say ""
+      say "  ${C_YEL}הרץ migrations ידנית:${C_RST}"
+      say "  1. פתח: ${C_CYN}https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}/sql/new${C_RST}"
+      say "  2. העתק: ${C_CYN}supabase/full-schema.sql${C_RST}"
+      say "  3. לחץ Run"
+      say ""
+      if confirm "המשך ל-git push בלי migrations?"; then
+        warn "Migrations דולגות — DB לא עודכן"
       else
-        err "supabase db push נכשל"; exit 1
+        exit 1
+      fi
+    fi
+
+    # ספור שורות שיש להן LOCAL timestamp אבל REMOTE ריק (ממתינות)
+    PENDING_COUNT=$(echo "$MIG_OUT" | grep -cE "\│\s+[0-9]{14}\s+\│\s*\│" 2>/dev/null || echo 0)
+    # fallback — אם כל ה-migrations ממתינות (DB ריק)
+    if echo "$MIG_OUT" | grep -qi "error\|failed\|no migrations"; then
+      PENDING_COUNT=0
+    fi
+
+    # הצג טבלת סטטוס
+    say ""
+    echo "$MIG_OUT" | grep -v "^A new version\|^We recommend" | sed 's/^/    /' || true
+    say ""
+
+    # בדוק אם יש משהו להחיל
+    LOCAL_COUNT=$(ls supabase/migrations/*.sql 2>/dev/null | wc -l | tr -d ' ')
+    APPLIED_COUNT=$(echo "$MIG_OUT" | grep -cE "[0-9]{14}.*[0-9]{14}" 2>/dev/null || echo 0)
+    NEED_PUSH=$(( LOCAL_COUNT - APPLIED_COUNT ))
+
+    if [[ $NEED_PUSH -gt 0 ]]; then
+      say "  ${C_YEL}יש ${NEED_PUSH} migrations לא מוחלות מתוך ${LOCAL_COUNT}${C_RST}"
+      say ""
+      if confirm "הרץ supabase db push?"; then
+        say ""
+        if supabase db push 2>&1 | tee /tmp/gadhan-all-dbpush.log \
+            | grep --line-buffered -E "Applying|Applied|Error|error|failed|migrations" \
+            | sed 's/^/    /'; then
+          ok "Migrations הוחלו בהצלחה"
+        else
+          err "supabase db push נכשל — לוג: /tmp/gadhan-all-dbpush.log"
+          cat /tmp/gadhan-all-dbpush.log | tail -20 | sed 's/^/    /'
+          exit 1
+        fi
+      else
+        warn "Migrations דולגות"
       fi
     else
-      warn "Migrations דולגות"
+      ok "DB מעודכן — כל ${LOCAL_COUNT} migrations מוחלות"
     fi
-  else
-    warn "אין תיקיית supabase/migrations — מדלג"
   fi
 
   # ─────────── 4. Edge Functions ──────────────────────────────────
   hdr "Edge Functions"
+  FUNCS_FOUND=0
   for fn in export-to-sheets manage-users generate-signing-pdf; do
     if [[ -d "supabase/functions/$fn" ]]; then
+      FUNCS_FOUND=1
       if confirm "Deploy function '$fn'?"; then
         if supabase functions deploy "$fn" 2>&1 | tail -3; then
           ok "$fn — deployed"
@@ -154,6 +225,7 @@ if [[ $SKIP_SUPABASE -eq 0 ]]; then
       fi
     fi
   done
+  [[ $FUNCS_FOUND -eq 0 ]] && ok "אין Edge Functions להעלאה"
 fi
 
 # ────────────── 5. git commit & push → Vercel ───────────────────

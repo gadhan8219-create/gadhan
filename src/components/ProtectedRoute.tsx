@@ -44,9 +44,15 @@ export default function ProtectedRoute({
       <div className="flex h-screen items-center justify-center">
         <div className="card max-w-md text-center">
           <h2 className="text-lg font-semibold mb-2">משתמש לא פעיל</h2>
-          <p className="text-slate-600 text-sm">
+          <p className="text-slate-600 text-sm mb-4">
             המשתמש שלך טרם הופעל על ידי מנהל המערכת. פנה למנהל לשיוך מסגרת והפעלה.
           </p>
+          <button
+            onClick={async () => { await signOut(); window.location.href = '/login'; }}
+            className="btn-primary text-sm"
+          >
+            התנתק
+          </button>
         </div>
       </div>
     );

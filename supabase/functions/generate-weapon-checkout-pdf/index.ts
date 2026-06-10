@@ -1,7 +1,10 @@
 // supabase/functions/generate-weapon-checkout-pdf/index.ts
 //
-// Generic Hebrew A4 PDF generator.
-// Generates the PDF and delegates Drive storage to a GAS web-app endpoint.
+// Hebrew A4 PDF generator.
+// Builds an RTL HTML document and delegates BOTH rendering (HTML→PDF) and Drive
+// storage to a GAS web-app endpoint. Google's HTML renderer has full BiDi
+// support, so Hebrew + numbers (phones, dates, serials) always come out in the
+// correct visual order — unlike pdf-lib, which reverses LTR runs in RTL text.
 //
 // Required secrets:
 //   GAS_PDF_URL      — deployed GAS web-app URL
@@ -34,44 +37,35 @@
 // deno-lint-ignore-file no-explicit-any
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
-import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'https://esm.sh/pdf-lib@1.17.1';
-import fontkit from 'https://esm.sh/@pdf-lib/fontkit@1.1.1';
 
-// ── Font ──────────────────────────────────────────────────────────────────────
-const HEEBO_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/heebo/Heebo%5Bwght%5D.ttf';
-let cachedFont: Uint8Array | null = null;
-async function loadHeebo(): Promise<Uint8Array> {
-  if (cachedFont) return cachedFont;
-  const r = await fetch(HEEBO_URL);
-  if (!r.ok) throw new Error(`Heebo fetch failed: ${r.status}`);
-  cachedFont = new Uint8Array(await r.arrayBuffer());
-  return cachedFont;
-}
-
-// ── BiDi pre-reversal ─────────────────────────────────────────────────────────
-// pdf-lib + Heebo applies the Unicode BiDi algorithm: in an RTL paragraph,
-// LTR character runs (digits, Latin) are visually reversed.
-// Pre-reversing those runs compensates, yielding correct visual order.
-function h(text: string): string {
-  return text.replace(/[^א-״יִ-פֿ]+/g, (m) =>
-    m.split('').reverse().join('')
-  );
-}
-
-// ── RTL draw helper ───────────────────────────────────────────────────────────
-function drawRight(
-  page: PDFPage, text: string, rx: number, y: number,
-  font: PDFFont, size: number, color = rgb(0, 0, 0),
-) {
-  const t = h(text);
-  page.drawText(t, { x: rx - font.widthOfTextAtSize(t, size), y, size, font, color });
-}
-
-// ── PDF builder ───────────────────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────────────
 interface PdfItem    { name: string; quantity: number; serial?: string | null }
 interface PdfSoldier { full_name: string; personal_number: string; phone?: string; unit_name: string; team_name?: string }
 
-async function buildPdf(
+// ── HTML escaping ────────────────────────────────────────────────────────────────
+function esc(v: unknown): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ── Date formatting (neutral, no BiDi marks) ──────────────────────────────────────
+function formatDate(timestamp: string): string {
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jerusalem',
+    day: 'numeric', month: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const p = fmt.formatToParts(new Date(timestamp || new Date().toISOString()));
+  const get = (t: string) => p.find((x) => x.type === t)?.value ?? '0';
+  return `${get('day')}.${get('month')}.${get('year')}  ${get('hour')}:${get('minute')}`;
+}
+
+// ── HTML builder (Google renders this → flawless Hebrew RTL) ───────────────────────
+function buildHtml(
   title: string,
   note: string | undefined,
   soldier: PdfSoldier,
@@ -79,113 +73,65 @@ async function buildPdf(
   performedBy: string,
   timestamp: string,
   signatureB64?: string,
-): Promise<Uint8Array> {
-  const fontBytes = await loadHeebo();
-  const pdf = await PDFDocument.create();
-  pdf.registerFontkit(fontkit);
-  const H = await pdf.embedFont(fontBytes, { subset: true });
+): string {
+  const dateStr = formatDate(timestamp);
 
-  const page = pdf.addPage([595.28, 841.89]); // A4
-  const R = 545; const L = 50;
-  let y = 800;
+  const rows = items.map((it) =>
+    `<tr><td>${esc(it.name)}</td><td>${esc(it.serial ?? '—')}</td><td class="qty">${esc(it.quantity)}</td></tr>`
+  ).join('');
 
-  // Avoid he-IL locale: it injects Unicode bidi marks that reverse numbers in pdf-lib.
-  // Build a clean "d.m.yyyy  HH:MM" string using neutral en-GB parts instead.
-  const dateStr = (() => {
-    const fmt = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Jerusalem',
-      day: 'numeric', month: 'numeric', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    });
-    const p = fmt.formatToParts(new Date(timestamp ?? new Date().toISOString()));
-    const get = (t: string) => p.find((x) => x.type === t)?.value ?? '0';
-    return `${get('day')}.${get('month')}.${get('year')}  ${get('hour')}:${get('minute')}`;
-  })();
+  return `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><style>
+    * { font-family: Arial, "Noto Sans Hebrew", sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
+    body { padding: 32px 36px; color: #1e293b; }
+    h1 { font-size: 24px; margin-bottom: 4px; }
+    .note { color: #64748b; font-size: 12px; margin-bottom: 10px; }
+    .rule { border-top: 1px solid #cbd5e1; margin: 12px 0 16px; }
+    .meta { font-size: 12px; color: #334155; margin: 2px 0; }
+    .section { font-size: 15px; font-weight: bold; color: #0f172a; margin: 18px 0 6px; }
+    .field { font-size: 13px; margin: 3px 0; }
+    .field b { color: #0f172a; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+    th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid #e2e8f0; }
+    th { color: #475569; font-weight: bold; border-bottom: 1.5px solid #cbd5e1; }
+    td.qty, th.qty { text-align: center; width: 70px; }
+    .sig { margin-top: 22px; }
+    .sig b { font-size: 13px; color: #334155; }
+    .sig img { max-width: 220px; border: 1px solid #cbd5e1; padding: 4px; display: block; margin-top: 6px; }
+    .footer { margin-top: 28px; font-size: 10px; color: #94a3b8; }
+  </style></head><body>
+    <h1>${esc(title)}</h1>
+    ${note ? `<div class="note">${esc(note)}</div>` : ''}
+    <div class="rule"></div>
+    <div class="meta">תאריך: ${esc(dateStr)}</div>
+    <div class="meta">בוצע ע״י: ${esc(performedBy)}</div>
 
-  // ── Title ──
-  drawRight(page, title, R, y, H, 20);
-  y -= 30;
-  if (note) { drawRight(page, note, R, y, H, 10, rgb(0.5, 0.5, 0.5)); y -= 18; }
-  page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: rgb(0.7, 0.7, 0.7) });
-  y -= 18;
+    <div class="section">פרטי החייל</div>
+    <div class="field"><b>שם מלא:</b> ${esc(soldier.full_name)}</div>
+    <div class="field"><b>מספר אישי:</b> ${esc(soldier.personal_number)}</div>
+    ${soldier.phone ? `<div class="field"><b>טלפון:</b> ${esc(soldier.phone)}</div>` : ''}
+    <div class="field"><b>מסגרת:</b> ${esc(soldier.unit_name)}</div>
+    ${soldier.team_name ? `<div class="field"><b>צוות:</b> ${esc(soldier.team_name)}</div>` : ''}
 
-  // ── Meta ──
-  drawRight(page, `תאריך: ${dateStr}`, R, y, H, 11); y -= 16;
-  drawRight(page, `בוצע ע״י: ${performedBy}`, R, y, H, 11); y -= 20;
+    <div class="section">פריטים (${items.length})</div>
+    <table>
+      <thead><tr><th>שם פריט</th><th>מ.ס / צ'</th><th class="qty">כמות</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
 
-  // ── Soldier ──
-  drawRight(page, 'פרטי החייל', R, y, H, 13, rgb(0.15, 0.15, 0.15)); y -= 20;
-  const soldierLines: [string, string][] = [
-    ['שם מלא', soldier.full_name],
-    ['מספר אישי', soldier.personal_number],
-    ...(soldier.phone     ? [['טלפון',  soldier.phone]     as [string,string]] : []),
-    ['מסגרת', soldier.unit_name],
-    ...(soldier.team_name ? [['צוות',   soldier.team_name] as [string,string]] : []),
-  ];
-  for (const [k, v] of soldierLines) {
-    drawRight(page, `${k}: ${v}`, R, y, H, 11); y -= 15;
-  }
-  y -= 8;
-  page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.4, color: rgb(0.85, 0.85, 0.85) });
-  y -= 16;
+    ${signatureB64 ? `<div class="sig"><b>חתימת החייל:</b><img src="data:image/png;base64,${esc(signatureB64)}" alt="חתימה"/></div>` : ''}
 
-  // ── Items table ──
-  drawRight(page, `פריטים (${items.length})`, R, y, H, 13, rgb(0.15, 0.15, 0.15)); y -= 20;
-
-  const COL_NAME = R;
-  const COL_SER  = L + 200;
-  const COL_QTY  = L + 50;
-
-  page.drawLine({ start: { x: L, y: y + 4 }, end: { x: R, y: y + 4 }, thickness: 0.4, color: rgb(0.85, 0.85, 0.85) });
-  drawRight(page, 'שם פריט', COL_NAME, y - 12, H, 10, rgb(0.4, 0.4, 0.4));
-  drawRight(page, "מ.ס / צ'",COL_SER,  y - 12, H, 10, rgb(0.4, 0.4, 0.4));
-  drawRight(page, 'כמות',    COL_QTY,  y - 12, H, 10, rgb(0.4, 0.4, 0.4));
-  y -= 20;
-  page.drawLine({ start: { x: L, y: y + 4 }, end: { x: R, y: y + 4 }, thickness: 0.4, color: rgb(0.85, 0.85, 0.85) });
-
-  for (const item of items) {
-    drawRight(page, item.name,              COL_NAME, y - 12, H, 11);
-    drawRight(page, item.serial ?? '—',     COL_SER,  y - 12, H, 11);
-    drawRight(page, String(item.quantity),  COL_QTY,  y - 12, H, 11);
-    y -= 17;
-  }
-  page.drawLine({ start: { x: L, y: y + 4 }, end: { x: R, y: y + 4 }, thickness: 0.3, color: rgb(0.9, 0.9, 0.9) });
-
-  // ── Signature (optional) ──
-  if (signatureB64) {
-    y -= 22;
-    drawRight(page, 'חתימת החייל:', R, y, H, 11, rgb(0.3, 0.3, 0.3));
-    y -= 8;
-    const sigBytes = Uint8Array.from(atob(signatureB64), (c) => c.charCodeAt(0));
-    const sigImg   = await pdf.embedPng(sigBytes);
-    const SIG_W = 180;
-    const SIG_H = Math.round((sigImg.height / sigImg.width) * SIG_W);
-    const sigX  = R - SIG_W;
-    page.drawImage(sigImg, { x: sigX, y: y - SIG_H, width: SIG_W, height: SIG_H });
-    page.drawLine({ start: { x: sigX, y: y - SIG_H - 4 }, end: { x: R, y: y - SIG_H - 4 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
-  }
-
-  // ── Footer ──
-  drawRight(page, `הופק אוטומטית · ${dateStr}`, R, 30, H, 8, rgb(0.6, 0.6, 0.6));
-
-  return pdf.save();
+    <div class="footer">הופק אוטומטית · ${esc(dateStr)}</div>
+  </body></html>`;
 }
 
-// ── Uint8Array → base64 (loop is safe for large arrays) ──────────────────────
-function toBase64(bytes: Uint8Array): string {
-  let s = '';
-  for (let i = 0; i < bytes.byteLength; i++) s += String.fromCharCode(bytes[i]);
-  return btoa(s);
-}
-
-// ── GAS upload ────────────────────────────────────────────────────────────────
-async function uploadViaGas(
+// ── GAS upload (HTML→PDF + Drive save) ─────────────────────────────────────────────
+async function uploadHtmlViaGas(
   gasUrl: string,
   gasSecret: string,
   rootFolderId: string,
   drivePath: string[],
   filename: string,
-  pdfBytes: Uint8Array,
+  html: string,
 ): Promise<string> {
   const resp = await fetch(gasUrl, {
     method: 'POST',
@@ -193,11 +139,11 @@ async function uploadViaGas(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       secret:       gasSecret,
-      action:       'savePdf',
+      action:       'savePdfFromHtml',
       rootFolderId,
       drivePath,
       filename,
-      pdfBase64:    toBase64(pdfBytes),
+      html,
     }),
   });
   if (!resp.ok) throw new Error(`GAS call failed (${resp.status}): ${await resp.text()}`);
@@ -206,7 +152,7 @@ async function uploadViaGas(
   return result.url!;
 }
 
-// ── CORS + JSON response ──────────────────────────────────────────────────────
+// ── CORS + JSON response ──────────────────────────────────────────────────────────
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -215,7 +161,7 @@ const corsHeaders = {
 const jsonRes = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-// ── Error email (best-effort via GAS) ────────────────────────────────────────
+// ── Error email (best-effort via GAS) ──────────────────────────────────────────────
 async function notifyError(gasUrl: string, gasSecret: string, errMsg: string): Promise<void> {
   await fetch(gasUrl, {
     method: 'POST',
@@ -230,7 +176,7 @@ async function notifyError(gasUrl: string, gasSecret: string, errMsg: string): P
   }).catch(() => {}); // never throw from error reporter
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Main ────────────────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -264,15 +210,15 @@ serve(async (req) => {
       return jsonRes({ ok: false, error: 'Missing required fields' }, 400);
     }
 
-    // Build PDF
-    const pdfBytes = await buildPdf(
+    // Build HTML
+    const html = buildHtml(
       title, note, soldier, items, performed_by,
       timestamp ?? new Date().toISOString(),
       signature_png_b64,
     );
 
-    // Upload via GAS
-    const url = await uploadViaGas(gasUrl, gasSecret, rootFolder, drive_path, filename, pdfBytes);
+    // Render + upload via GAS
+    const url = await uploadHtmlViaGas(gasUrl, gasSecret, rootFolder, drive_path, filename, html);
 
     // Audit log
     const sb = createClient(supabaseUrl, serviceKey);

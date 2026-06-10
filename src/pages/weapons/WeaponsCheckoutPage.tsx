@@ -369,9 +369,6 @@ export default function WeaponsCheckoutPage() {
                       </div>
                     </div>
                   )}
-                  {assignments.length === 0 && (
-                    <p className="text-xs text-slate-400">אין נשק רשום בהחזקת החייל</p>
-                  )}
                 </div>
               )}
 

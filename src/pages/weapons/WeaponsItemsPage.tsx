@@ -266,8 +266,8 @@ export default function WeaponsItemsPage() {
                           if (!s) return <span className="text-slate-400">0 / 0</span>;
                           return (
                             <span>
-                              <span className={s.issued > 0 ? 'text-amber-700 font-semibold' : 'text-slate-500'}>{s.issued} נפוק</span>
-                              <span className="text-slate-400"> / {s.total} סה"כ</span>
+                              <span className={s.issued > 0 ? 'text-amber-700 font-semibold' : 'text-slate-500'}>{s.issued}</span>
+                              <span className="text-slate-400"> / {s.total}</span>
                             </span>
                           );
                         })()

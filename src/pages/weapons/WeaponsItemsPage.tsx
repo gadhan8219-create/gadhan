@@ -1,24 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { supabase } from '../../lib/supabase';
-import {
-  addItemSerials,
-  loadItemSerialStatus,
-  parseSerialBlob,
-  removeItemSerial,
-  type SerialLocation,
-} from '../../lib/itemSerials';
-import type { Item } from '../../lib/database.types';
+import type { WeaponsItem, WeaponsItemSerial } from '../../lib/database.types';
 
 interface SerialsModal {
-  item: Item;
-  rows: SerialLocation[];
+  item: WeaponsItem;
+  rows: WeaponsItemSerial[];
   addText: string;
   busy: boolean;
   error: string | null;
 }
 
 interface EditModal {
-  item: Item;
+  item: WeaponsItem;
   name: string;
   description: string;
   quantity: string;
@@ -28,8 +21,14 @@ interface EditModal {
 
 const EMPTY_FORM = { name: '', description: '', hasSerials: true, serials: '', quantity: '' };
 
+function parseSerials(text: string): string[] {
+  return [...new Set(
+    text.split(/[\n,\s]+/).map((s) => s.trim()).filter(Boolean)
+  )];
+}
+
 export default function WeaponsItemsPage() {
-  const [items, setItems] = useState<Item[]>([]);
+  const [items, setItems] = useState<WeaponsItem[]>([]);
   const [serialCounts, setSerialCounts] = useState<Record<string, number>>({});
   const [form, setForm] = useState(EMPTY_FORM);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -39,8 +38,8 @@ export default function WeaponsItemsPage() {
 
   async function load() {
     const [it, ser] = await Promise.all([
-      supabase.from('items').select('*').eq('module', 'weapons').order('name'),
-      supabase.from('item_serial_status').select('item_id'),
+      supabase.from('weapons_items').select('*').order('name'),
+      supabase.from('weapons_item_serials').select('item_id'),
     ]);
     if (it.data) setItems(it.data);
     const cnt: Record<string, number> = {};
@@ -60,47 +59,39 @@ export default function WeaponsItemsPage() {
     const name = form.name.trim();
     if (!name) return;
 
-    // check duplicate
     const { data: existing } = await supabase
-      .from('items')
-      .select('id, name, active, module')
+      .from('weapons_items')
+      .select('id, name, active')
       .ilike('name', name)
-      .eq('module', 'weapons')
       .maybeSingle();
 
     if (existing) {
       if (!existing.active) {
         if (!confirm(`פריט "${existing.name}" קיים אך מושבת. להפעיל מחדש?`)) return;
-        await supabase.from('items').update({ active: true }).eq('id', existing.id);
-        load();
+        await supabase.from('weapons_items').update({ active: true }).eq('id', existing.id);
         setForm(EMPTY_FORM);
+        load();
         return;
       }
       alert(`פריט בשם "${existing.name}" כבר קיים.`);
       return;
     }
 
-    const { data, error } = await supabase.from('items').insert({
+    const { data, error } = await supabase.from('weapons_items').insert({
       name,
       description: form.description.trim() || null,
-      module: 'weapons',
       has_serials: form.hasSerials,
       quantity: form.hasSerials ? null : (parseInt(form.quantity) || 0),
     }).select().single();
 
-    if (error) {
-      alert(error.message);
-      return;
-    }
+    if (error) { alert(error.message); return; }
 
     if (form.hasSerials && form.serials.trim()) {
-      const parsed = parseSerialBlob(form.serials);
+      const parsed = parseSerials(form.serials);
       if (parsed.length > 0) {
-        try {
-          await addItemSerials(data.id, parsed);
-        } catch (e) {
-          alert(`פריט נוצר אך הוספת הצ'ים נכשלה: ${(e as Error).message}`);
-        }
+        const rows = parsed.map((s) => ({ item_id: data.id, serial_number: s }));
+        const { error: se } = await supabase.from('weapons_item_serials').insert(rows);
+        if (se) alert(`פריט נוצר אך הוספת הצ'ים נכשלה: ${se.message}`);
       }
     }
 
@@ -108,81 +99,73 @@ export default function WeaponsItemsPage() {
     load();
   }
 
-  async function toggleActive(item: Item) {
+  async function toggleActive(item: WeaponsItem) {
     setBusyId(item.id);
     try {
-      await supabase.from('items').update({ active: !item.active }).eq('id', item.id);
+      await supabase.from('weapons_items').update({ active: !item.active }).eq('id', item.id);
       load();
-    } finally {
-      setBusyId(null);
-    }
+    } finally { setBusyId(null); }
   }
 
-  async function handleDelete(item: Item) {
+  async function handleDelete(item: WeaponsItem) {
     if (!confirm(`למחוק את "${item.name}" לצמיתות?`)) return;
     setBusyId(item.id);
     try {
-      const { error } = await supabase.from('items').delete().eq('id', item.id);
+      const { error } = await supabase.from('weapons_items').delete().eq('id', item.id);
       if (error) alert(error.message);
       else load();
-    } finally {
-      setBusyId(null);
-    }
+    } finally { setBusyId(null); }
   }
 
-  async function openSerialsModal(item: Item) {
-    try {
-      const rows = await loadItemSerialStatus(item.id);
-      setSerialsModal({ item, rows, addText: '', busy: false, error: null });
-    } catch (e) {
-      alert((e as Error).message);
-    }
+  async function openSerialsModal(item: WeaponsItem) {
+    const { data, error } = await supabase
+      .from('weapons_item_serials')
+      .select('*')
+      .eq('item_id', item.id)
+      .order('serial_number');
+    if (error) { alert(error.message); return; }
+    setSerialsModal({ item, rows: data ?? [], addText: '', busy: false, error: null });
   }
 
   async function handleAddSerials() {
     if (!serialsModal) return;
-    const parsed = parseSerialBlob(serialsModal.addText);
+    const parsed = parseSerials(serialsModal.addText);
     if (parsed.length === 0) {
       setSerialsModal({ ...serialsModal, error: 'הזן צ׳ אחד או יותר' });
       return;
     }
     setSerialsModal({ ...serialsModal, busy: true, error: null });
-    try {
-      await addItemSerials(serialsModal.item.id, parsed);
-      const rows = await loadItemSerialStatus(serialsModal.item.id);
-      setSerialsModal({ ...serialsModal, rows, addText: '', busy: false });
-      load();
-    } catch (e) {
-      setSerialsModal({ ...serialsModal, busy: false, error: (e as Error).message });
-    }
-  }
-
-  async function handleRemoveSerial(row: SerialLocation) {
-    if (!serialsModal) return;
-    if (row.currentUnitId) {
-      alert('לא ניתן למחוק צ׳ שנמצא כרגע אצל מסגרת.');
+    const rows = parsed.map((s) => ({ item_id: serialsModal.item.id, serial_number: s }));
+    const { error } = await supabase.from('weapons_item_serials').insert(rows);
+    if (error) {
+      setSerialsModal({ ...serialsModal, busy: false, error: error.message });
       return;
     }
-    if (!confirm(`למחוק את הצ׳ ${row.serialNumber}?`)) return;
-    try {
-      await removeItemSerial(row.serialId);
-      const rows = await loadItemSerialStatus(serialsModal.item.id);
-      setSerialsModal({ ...serialsModal, rows });
-      load();
-    } catch (e) {
-      alert((e as Error).message);
-    }
+    const { data } = await supabase
+      .from('weapons_item_serials')
+      .select('*')
+      .eq('item_id', serialsModal.item.id)
+      .order('serial_number');
+    setSerialsModal({ ...serialsModal, rows: data ?? [], addText: '', busy: false, error: null });
+    load();
   }
 
-  function openEdit(item: Item) {
-    setEditModal({
-      item,
-      name: item.name,
-      description: item.description ?? '',
-      quantity: item.quantity?.toString() ?? '',
-      busy: false,
-      error: null,
-    });
+  async function handleRemoveSerial(row: WeaponsItemSerial) {
+    if (!serialsModal) return;
+    if (!confirm(`למחוק את הצ׳ ${row.serial_number}?`)) return;
+    const { error } = await supabase.from('weapons_item_serials').delete().eq('id', row.id);
+    if (error) { alert(error.message); return; }
+    const { data } = await supabase
+      .from('weapons_item_serials')
+      .select('*')
+      .eq('item_id', serialsModal.item.id)
+      .order('serial_number');
+    setSerialsModal({ ...serialsModal, rows: data ?? [] });
+    load();
+  }
+
+  function openEdit(item: WeaponsItem) {
+    setEditModal({ item, name: item.name, description: item.description ?? '', quantity: item.quantity?.toString() ?? '', busy: false, error: null });
   }
 
   async function handleSaveEdit() {
@@ -190,21 +173,14 @@ export default function WeaponsItemsPage() {
     const name = editModal.name.trim();
     if (!name) { setEditModal({ ...editModal, error: 'חסר שם' }); return; }
     setEditModal({ ...editModal, busy: true, error: null });
-    try {
-      const { error } = await supabase.from('items').update({
-        name,
-        description: editModal.description.trim() || null,
-        ...(editModal.item.has_serials ? {} : { quantity: parseInt(editModal.quantity) || 0 }),
-      }).eq('id', editModal.item.id);
-      if (error) {
-        setEditModal({ ...editModal, busy: false, error: error.message });
-        return;
-      }
-      setEditModal(null);
-      load();
-    } catch (e) {
-      setEditModal({ ...editModal, busy: false, error: (e as Error).message });
-    }
+    const { error } = await supabase.from('weapons_items').update({
+      name,
+      description: editModal.description.trim() || null,
+      ...(!editModal.item.has_serials ? { quantity: parseInt(editModal.quantity) || 0 } : {}),
+    }).eq('id', editModal.item.id);
+    if (error) { setEditModal({ ...editModal, busy: false, error: error.message }); return; }
+    setEditModal(null);
+    load();
   }
 
   return (
@@ -216,26 +192,14 @@ export default function WeaponsItemsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">שם פריט</label>
-            <input
-              className="input"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="לדוגמה: M16, אפוד, מגנזין"
-              required
-            />
+            <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="לדוגמה: M16, אפוד, מגנזין" required />
           </div>
           <div>
             <label className="label">תיאור (אופציונלי)</label>
-            <input
-              className="input"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="פירוט נוסף"
-            />
+            <input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="פירוט נוסף" />
           </div>
         </div>
 
-        {/* has_serials toggle */}
         <div className="flex items-center gap-3 py-1">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
@@ -257,25 +221,12 @@ export default function WeaponsItemsPage() {
               צ׳ים ראשוניים (אופציונלי)
               <span className="text-xs text-slate-500 font-normal mr-2">שורה / פסיק / רווח בין צ׳ים</span>
             </label>
-            <textarea
-              className="input min-h-[70px] font-mono text-sm"
-              dir="ltr"
-              placeholder="1234567&#10;1234568&#10;1234569"
-              value={form.serials}
-              onChange={(e) => setForm({ ...form, serials: e.target.value })}
-            />
+            <textarea className="input min-h-[70px] font-mono text-sm" dir="ltr" placeholder={"1234567\n1234568\n1234569"} value={form.serials} onChange={(e) => setForm({ ...form, serials: e.target.value })} />
           </div>
         ) : (
           <div className="max-w-xs">
             <label className="label">כמות</label>
-            <input
-              type="number"
-              min={0}
-              className="input"
-              placeholder="0"
-              value={form.quantity}
-              onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-            />
+            <input type="number" min={0} className="input" placeholder="0" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
           </div>
         )}
 
@@ -284,15 +235,9 @@ export default function WeaponsItemsPage() {
         </div>
       </form>
 
-      {/* Search + list */}
+      {/* List */}
       <div className="card space-y-3">
-        <input
-          className="input"
-          placeholder="חיפוש פריט..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-
+        <input className="input" placeholder="חיפוש פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="table-wrap">
           <table className="table-base">
             <thead>
@@ -306,57 +251,35 @@ export default function WeaponsItemsPage() {
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="text-center text-slate-400 py-8 text-sm">
-                    {items.length === 0 ? 'אין פריטים עדיין — הוסף את הפריט הראשון' : 'לא נמצאו תוצאות'}
+                <tr><td colSpan={5} className="text-center text-slate-400 py-8 text-sm">{items.length === 0 ? 'אין פריטים עדיין — הוסף את הפריט הראשון' : 'לא נמצאו תוצאות'}</td></tr>
+              )}
+              {filtered.map((it) => (
+                <tr key={it.id} className={it.active ? '' : 'opacity-50'}>
+                  <td className="font-medium">{it.name}</td>
+                  <td className="text-sm text-slate-500">{it.description ?? '—'}</td>
+                  <td className="text-sm">
+                    {it.has_serials
+                      ? (serialCounts[it.id] ?? 0) > 0
+                        ? <span className="font-semibold">{serialCounts[it.id]} צ׳ים</span>
+                        : <span className="text-slate-400">ללא צ׳ים</span>
+                      : <span>{it.quantity ?? 0} יח׳</span>
+                    }
+                  </td>
+                  <td>
+                    <span className={`badge ${it.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                      {it.active ? 'פעיל' : 'מושבת'}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="flex items-center gap-3 flex-wrap text-sm">
+                      <button onClick={() => openEdit(it)} className="text-emerald-700 hover:text-emerald-900">ערוך</button>
+                      {it.has_serials && <button onClick={() => openSerialsModal(it)} className="text-sky-700 hover:text-sky-900">נהל צ׳ים</button>}
+                      <button onClick={() => toggleActive(it)} disabled={busyId === it.id} className="text-slate-600 hover:text-slate-900 disabled:opacity-50">{it.active ? 'השבת' : 'הפעל'}</button>
+                      <button onClick={() => handleDelete(it)} disabled={busyId === it.id} className="text-red-600 hover:text-red-800 disabled:opacity-50">מחק</button>
+                    </div>
                   </td>
                 </tr>
-              )}
-              {filtered.map((it) => {
-                const cnt = serialCounts[it.id] ?? 0;
-                return (
-                  <tr key={it.id} className={it.active ? '' : 'opacity-50'}>
-                    <td className="font-medium">{it.name}</td>
-                    <td className="text-sm text-slate-500">{it.description ?? '—'}</td>
-                    <td className="text-sm">
-                      {it.has_serials ? (
-                        cnt > 0
-                          ? <span className="font-semibold">{cnt} צ׳ים</span>
-                          : <span className="text-slate-400">ללא צ׳ים</span>
-                      ) : (
-                        <span>{it.quantity ?? 0} יח׳</span>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`badge ${it.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
-                        {it.active ? 'פעיל' : 'מושבת'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-3 flex-wrap text-sm">
-                        <button onClick={() => openEdit(it)} className="text-emerald-700 hover:text-emerald-900">ערוך</button>
-                        {it.has_serials && (
-                          <button onClick={() => openSerialsModal(it)} className="text-sky-700 hover:text-sky-900">נהל צ׳ים</button>
-                        )}
-                        <button
-                          onClick={() => toggleActive(it)}
-                          disabled={busyId === it.id}
-                          className="text-slate-600 hover:text-slate-900 disabled:opacity-50"
-                        >
-                          {it.active ? 'השבת' : 'הפעל'}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(it)}
-                          disabled={busyId === it.id}
-                          className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                        >
-                          מחק
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         </div>
@@ -406,62 +329,39 @@ export default function WeaponsItemsPage() {
               </div>
               <button onClick={() => setSerialsModal(null)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
             </div>
-
             <div className="mb-4">
               <label className="label">הוסף צ׳ים חדשים</label>
-              <textarea
-                className="input min-h-[70px] font-mono text-sm"
-                dir="ltr"
-                placeholder="123456, 123457&#10;123458"
-                value={serialsModal.addText}
-                onChange={(e) => setSerialsModal({ ...serialsModal, addText: e.target.value })}
-                disabled={serialsModal.busy}
-              />
+              <textarea className="input min-h-[70px] font-mono text-sm" dir="ltr" placeholder={"123456, 123457\n123458"} value={serialsModal.addText} onChange={(e) => setSerialsModal({ ...serialsModal, addText: e.target.value })} disabled={serialsModal.busy} />
               {serialsModal.error && <p className="text-sm text-red-700 mt-1">{serialsModal.error}</p>}
               <div className="flex justify-end mt-2">
-                <button onClick={handleAddSerials} disabled={serialsModal.busy} className="btn-primary !py-1.5 !px-3 text-sm">
-                  {serialsModal.busy ? 'מוסיף...' : 'הוסף'}
-                </button>
+                <button onClick={handleAddSerials} disabled={serialsModal.busy} className="btn-primary !py-1.5 !px-3 text-sm">{serialsModal.busy ? 'מוסיף...' : 'הוסף'}</button>
               </div>
             </div>
-
             <div className="border border-slate-200 rounded-lg max-h-80 overflow-auto">
-              {serialsModal.rows.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-6">אין צ׳ים רשומים עדיין</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="text-right p-2 font-medium">צ׳</th>
-                      <th className="text-right p-2 font-medium">מיקום</th>
-                      <th className="w-16"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {serialsModal.rows.map((r) => (
-                      <tr key={r.serialId} className="border-b border-slate-100 last:border-0">
-                        <td className="p-2 font-mono" dir="ltr">{r.serialNumber}</td>
-                        <td className="p-2">
-                          {r.currentUnitId
-                            ? <span className="text-amber-700">מסגרת</span>
-                            : <span className="text-emerald-700">גדוד</span>}
-                        </td>
-                        <td className="p-2 text-right">
-                          <button
-                            onClick={() => handleRemoveSerial(r)}
-                            disabled={!!r.currentUnitId}
-                            className="text-xs text-red-600 hover:text-red-800 disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            מחק
-                          </button>
-                        </td>
+              {serialsModal.rows.length === 0
+                ? <p className="text-sm text-slate-500 text-center py-6">אין צ׳ים רשומים עדיין</p>
+                : (
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="text-right p-2 font-medium">צ׳</th>
+                        <th className="w-16"></th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                    </thead>
+                    <tbody>
+                      {serialsModal.rows.map((r) => (
+                        <tr key={r.id} className="border-b border-slate-100 last:border-0">
+                          <td className="p-2 font-mono" dir="ltr">{r.serial_number}</td>
+                          <td className="p-2 text-right">
+                            <button onClick={() => handleRemoveSerial(r)} className="text-xs text-red-600 hover:text-red-800">מחק</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              }
             </div>
-
             <div className="flex justify-end mt-5">
               <button onClick={() => setSerialsModal(null)} className="btn-secondary">סגור</button>
             </div>

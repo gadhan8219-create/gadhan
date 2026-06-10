@@ -48,10 +48,25 @@ export interface Item {
   name: string;
   description: string | null;
   category: string | null;
-  module: string;        // 'radio' | 'weapons'
-  has_serials: boolean;  // true = tracked by serial, false = tracked by quantity
+  active: boolean;
+  created_at: string;
+}
+
+// ── נשק ──
+export interface WeaponsItem {
+  id: string;
+  name: string;
+  description: string | null;
+  has_serials: boolean;
   quantity: number | null; // used when has_serials = false
   active: boolean;
+  created_at: string;
+}
+
+export interface WeaponsItemSerial {
+  id: string;
+  item_id: string;
+  serial_number: string;
   created_at: string;
 }
 
@@ -147,6 +162,8 @@ export interface Database {
       unit_signings: { Row: UnitSigning; Insert: Partial<UnitSigning> & { unit_id: string; performed_by: string; type: UnitSigningType }; Update: Partial<UnitSigning> };
       unit_signing_items: { Row: UnitSigningItem; Insert: Partial<UnitSigningItem> & { unit_signing_id: string; item_id: string; quantity: number; action: UnitItemAction }; Update: Partial<UnitSigningItem> };
       audit_logs: { Row: AuditLog; Insert: Partial<AuditLog> & { action: string }; Update: Partial<AuditLog> };
+      weapons_items: { Row: WeaponsItem; Insert: Partial<WeaponsItem> & { name: string }; Update: Partial<WeaponsItem> };
+      weapons_item_serials: { Row: WeaponsItemSerial; Insert: Partial<WeaponsItemSerial> & { item_id: string; serial_number: string }; Update: Partial<WeaponsItemSerial> };
     };
   };
 }

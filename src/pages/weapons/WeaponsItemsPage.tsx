@@ -29,7 +29,7 @@ function parseSerials(text: string): string[] {
 
 export default function WeaponsItemsPage() {
   const [items, setItems] = useState<WeaponsItem[]>([]);
-  const [serialCounts, setSerialCounts] = useState<Record<string, number>>({});
+  const [serialStats, setSerialStats] = useState<Record<string, { total: number; issued: number }>>({});
   const [form, setForm] = useState(EMPTY_FORM);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [serialsModal, setSerialsModal] = useState<SerialsModal | null>(null);
@@ -39,14 +39,16 @@ export default function WeaponsItemsPage() {
   async function load() {
     const [it, ser] = await Promise.all([
       supabase.from('weapons_items').select('*').order('name'),
-      supabase.from('weapons_item_serials').select('item_id'),
+      supabase.from('weapons_item_serials').select('item_id, assigned_to_pn'),
     ]);
     if (it.data) setItems(it.data);
-    const cnt: Record<string, number> = {};
-    for (const row of (ser.data ?? []) as Array<{ item_id: string }>) {
-      cnt[row.item_id] = (cnt[row.item_id] ?? 0) + 1;
+    const stats: Record<string, { total: number; issued: number }> = {};
+    for (const row of (ser.data ?? []) as Array<{ item_id: string; assigned_to_pn: string | null }>) {
+      if (!stats[row.item_id]) stats[row.item_id] = { total: 0, issued: 0 };
+      stats[row.item_id].total += 1;
+      if (row.assigned_to_pn) stats[row.item_id].issued += 1;
     }
-    setSerialCounts(cnt);
+    setSerialStats(stats);
   }
   useEffect(() => { load(); }, []);
 
@@ -259,9 +261,16 @@ export default function WeaponsItemsPage() {
                   <td className="text-sm text-slate-500">{it.description ?? '—'}</td>
                   <td className="text-sm">
                     {it.has_serials
-                      ? (serialCounts[it.id] ?? 0) > 0
-                        ? <span className="font-semibold">{serialCounts[it.id]} צ׳ים</span>
-                        : <span className="text-slate-400">ללא צ׳ים</span>
+                      ? (() => {
+                          const s = serialStats[it.id];
+                          if (!s) return <span className="text-slate-400">0 / 0</span>;
+                          return (
+                            <span>
+                              <span className={s.issued > 0 ? 'text-amber-700 font-semibold' : 'text-slate-500'}>{s.issued} נפוק</span>
+                              <span className="text-slate-400"> / {s.total} סה"כ</span>
+                            </span>
+                          );
+                        })()
                       : <span>{it.quantity ?? 0} יח׳</span>
                     }
                   </td>

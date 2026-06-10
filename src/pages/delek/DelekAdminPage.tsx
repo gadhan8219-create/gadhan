@@ -187,7 +187,7 @@ export default function DelekAdminPage() {
                       <td className="text-xs text-slate-500">{fmtDate(c.last_synced_at)}</td>
                       <td>
                         {c.is_archived
-                          ? <span className="badge bg-slate-100 text-slate-500">בארכיב</span>
+                          ? <span className="badge bg-slate-100 text-slate-500">בארכיון</span>
                           : c.is_empty
                             ? <span className="badge bg-red-100 text-red-700">ריק</span>
                             : <span className="badge bg-emerald-100 text-emerald-700">פעיל</span>}
@@ -203,7 +203,7 @@ export default function DelekAdminPage() {
                             {c.is_empty ? '⊘' : '∅'}
                           </button>
                           <button type="button" disabled={busy === c.id} onClick={() => patchCard(c, { is_archived: !c.is_archived })}
-                            className="text-slate-500 hover:text-slate-700 disabled:opacity-40" title={c.is_archived ? 'שחזר' : 'ארכב'}>
+                            className="text-slate-500 hover:text-slate-700 disabled:opacity-40" title={c.is_archived ? 'שחזר' : 'העבר לארכיון'}>
                             {c.is_archived ? '⮌' : '🗄'}
                           </button>
                           <button type="button" disabled={busy === c.id} onClick={() => deleteCard(c)}

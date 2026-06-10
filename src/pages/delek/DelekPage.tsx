@@ -5,6 +5,47 @@ import { goodiLookup } from './fuelApi';
 
 type Tab = 'fuel' | 'balance';
 
+/**
+ * Downscale + re-encode a receipt photo to JPEG before upload, to keep Storage
+ * usage low (free tier = 1 GB). A receipt is a photo of paper — full camera
+ * resolution is unnecessary to read it. Falls back to the original file if the
+ * browser can't decode it (e.g. some HEIC) or if compression wouldn't help.
+ */
+async function compressImage(file: File, maxDim = 1280, quality = 0.7): Promise<File> {
+  if (!file.type.startsWith('image/')) return file;
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result as string);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = reject;
+      im.src = dataUrl;
+    });
+    let { width, height } = img;
+    if (width > maxDim || height > maxDim) {
+      if (width >= height) { height = Math.round((height * maxDim) / width); width = maxDim; }
+      else { width = Math.round((width * maxDim) / height); height = maxDim; }
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob || blob.size >= file.size) return file; // keep whichever is smaller
+    const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return new File([blob], name, { type: 'image/jpeg' });
+  } catch {
+    return file;
+  }
+}
+
 interface FuelForm {
   cardNumber: string;
   driverName: string;
@@ -31,18 +72,19 @@ export default function DelekPage() {
   } | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
 
-  function onReceiptPicked(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onReceiptPicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const compressed = await compressImage(file);
     const reader = new FileReader();
     reader.onload = (ev) => {
       setFuelForm((f) => ({
         ...f,
-        receiptFile: file,
+        receiptFile: compressed,
         receiptPreview: ev.target?.result as string,
       }));
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(compressed);
   }
 
   async function submitFueling() {

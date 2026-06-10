@@ -1,61 +1,259 @@
-import { useState } from 'react';
-import { WEAPONS_ITEMS } from '../../lib/weaponsItems';
+import { useEffect, useRef, useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
+import type { WeaponsItem } from '../../lib/database.types';
 
-type Mode = 'credit' | 'transfer' | 'swap' | 'apson';
+// ── Types ────────────────────────────────────────────────────────────────────
 
-const MODE_LABELS: Record<Mode, string> = {
-  credit:   '❌ זיכוי',
-  transfer: '↔️ העברה',
-  swap:     '🔄 ראש-בראש',
-  apson:    '📦 איפסון',
-};
+interface SoldierRow {
+  id: string;
+  full_name: string;
+  personal_number: string;
+  unit_id: string;
+  unit_name: string;
+}
 
-const MODE_COLORS: Record<Mode, string> = {
-  credit:   'bg-red-600 text-white',
-  transfer: 'bg-blue-700 text-white',
-  swap:     'bg-teal-700 text-white',
-  apson:    'bg-orange-600 text-white',
-};
+interface SerialRow {
+  id: string;
+  item_id: string;
+  item_name: string;
+  serial_number: string;
+  assigned_to_pn: string;
+  assigned_to_name: string | null;
+  is_zeroed: boolean;
+}
+
+type MainTab = 'zikhui' | 'transfer' | 'rosh' | 'ipasoon';
+type ZikhuiSub = 'soldier' | 'item';
+
+// ── Soldier search component ──────────────────────────────────────────────────
+
+function SoldierSearch({
+  label, soldiers, selected, onSelect, onClear,
+}: {
+  label: string;
+  soldiers: SoldierRow[];
+  selected: SoldierRow | null;
+  onSelect: (s: SoldierRow) => void;
+  onClear: () => void;
+}) {
+  const [query, setQuery]   = useState('');
+  const [show,  setShow]    = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setShow(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const lower = query.toLowerCase();
+  const suggestions = query.trim()
+    ? soldiers.filter(
+        (s) => s.full_name.includes(query) || s.personal_number.includes(query) || s.full_name.toLowerCase().includes(lower)
+      ).slice(0, 8)
+    : [];
+
+  function handleClear() { setQuery(''); setShow(false); onClear(); }
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="label">{label}</label>
+      <div className="relative">
+        <input
+          className="input pr-8"
+          placeholder="הקלד שם או מ.א..."
+          autoComplete="off"
+          value={selected ? `${selected.full_name} (${selected.personal_number})` : query}
+          readOnly={!!selected}
+          onChange={(e) => { setQuery(e.target.value); setShow(true); }}
+          onFocus={() => { if (!selected) setShow(true); }}
+          onClick={() => { if (selected) handleClear(); }}
+        />
+        {selected && (
+          <button type="button" onClick={handleClear}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-lg leading-none">×</button>
+        )}
+      </div>
+      {selected && (
+        <p className="text-xs text-slate-400 mt-0.5">{selected.unit_name}</p>
+      )}
+      {show && suggestions.length > 0 && !selected && (
+        <ul className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-52 overflow-auto">
+          {suggestions.map((s) => (
+            <li key={s.id} onMouseDown={() => { onSelect(s); setQuery(''); setShow(false); }}
+              className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0">
+              <span className="font-medium text-sm">{s.full_name}
+                <span className="text-xs text-slate-500 mr-2">{s.personal_number}</span>
+              </span>
+              <span className="text-xs text-slate-400">{s.unit_name}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function WeaponsTransferPage() {
   const { profile } = useAuth();
-  const [mode, setMode] = useState<Mode>('credit');
-  const [sourcePN, setSourcePN] = useState('');
-  const [targetPN, setTargetPN] = useState('');
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState('');
+
+  const [soldiers,   setSoldiers]   = useState<SoldierRow[]>([]);
+  const [items,      setItems]      = useState<WeaponsItem[]>([]);
+  const [allSerials, setAllSerials] = useState<SerialRow[]>([]);
+
+  const [tab,       setTab]       = useState<MainTab>('zikhui');
+  const [zikhuiSub, setZikhuiSub] = useState<ZikhuiSub>('soldier');
+
+  const [srcSoldier, setSrcSoldier] = useState<SoldierRow | null>(null);
+  const [dstSoldier, setDstSoldier] = useState<SoldierRow | null>(null);
+
+  // Zikhui by item
+  const [zItemId,  setZItemId]  = useState('');
+  const [zSerialQ, setZSerialQ] = useState('');
+  const [zSerial,  setZSerial]  = useState('');
+
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
 
-  const filteredItems = WEAPONS_ITEMS.filter((item) =>
-    item.label.includes(search) || item.key.toLowerCase().includes(search.toLowerCase())
-  );
+  // ── Load ──────────────────────────────────────────────────────────────────
 
-  function toggleItem(key: string) {
-    setSelectedItems((prev) => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  }
-
-  async function handleSubmit() {
-    if (!sourcePN) { setError('נא להזין מספר אישי מקור'); return; }
-    if ((mode === 'transfer' || mode === 'swap') && !targetPN) {
-      setError('נא להזין מספר אישי יעד'); return;
+  async function loadAll() {
+    const [sol, wi, ser] = await Promise.all([
+      supabase.from('soldiers').select('*, units(name)').order('full_name'),
+      supabase.from('weapons_items').select('*').eq('active', true).order('name'),
+      supabase
+        .from('weapons_item_serials')
+        .select('id, item_id, serial_number, assigned_to_pn, assigned_to_name, is_zeroed, weapons_items(name)')
+        .not('assigned_to_pn', 'is', null),
+    ]);
+    if (sol.data) {
+      setSoldiers(sol.data.map((s: any) => ({
+        id: s.id, full_name: s.full_name, personal_number: s.personal_number,
+        unit_id: s.unit_id, unit_name: s.units?.name ?? '—',
+      })));
     }
-    if (selectedItems.size === 0) { setError('נא לבחור לפחות פריט אחד'); return; }
-
-    setLoading(true);
-    setError(null);
-    // TODO: Supabase
-    await new Promise((r) => setTimeout(r, 700));
-    setSuccess(`${MODE_LABELS[mode]} בוצע בהצלחה — ${selectedItems.size} פריטים`);
-    setSelectedItems(new Set());
-    setLoading(false);
+    if (wi.data) setItems(wi.data);
+    if (ser.data) {
+      setAllSerials((ser.data as any[]).map((r) => ({
+        id: r.id, item_id: r.item_id, item_name: r.weapons_items?.name ?? '—',
+        serial_number: r.serial_number, assigned_to_pn: r.assigned_to_pn,
+        assigned_to_name: r.assigned_to_name, is_zeroed: r.is_zeroed ?? false,
+      })));
+    }
   }
+  useEffect(() => { loadAll(); }, []);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  function resetForms() {
+    setSrcSoldier(null); setDstSoldier(null);
+    setZItemId(''); setZSerialQ(''); setZSerial('');
+    setChecked(new Set());
+    setSuccess(null); setError(null);
+  }
+
+  function toggleCheck(key: string) {
+    setChecked((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  }
+
+  const srcSerials = srcSoldier ? allSerials.filter((r) => r.assigned_to_pn === srcSoldier.personal_number) : [];
+  const dstSerials = dstSoldier ? allSerials.filter((r) => r.assigned_to_pn === dstSoldier.personal_number) : [];
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  async function doZikhui(ids: string[]) {
+    if (!ids.length) { setError('לא נבחרו פריטים'); return; }
+    setLoading(true); setError(null);
+    try {
+      await supabase.from('weapons_item_serials')
+        .update({ assigned_to_pn: null, assigned_to_name: null, assigned_at: null, is_zeroed: false })
+        .in('id', ids);
+      setSuccess(`${ids.length} פריטים הוחזרו לגדוד`);
+      await loadAll(); resetForms();
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  }
+
+  async function doTransfer() {
+    if (!srcSoldier || !dstSoldier) { setError('בחר חייל מקור ויעד'); return; }
+    if (srcSoldier.unit_id !== dstSoldier.unit_id) { setError('לא ניתן להעביר בין מסגרות שונות'); return; }
+    if (!checked.size) { setError('לא נבחרו פריטים'); return; }
+    const rows = srcSerials.filter((r) => checked.has(r.serial_number));
+    const dstItemIds = new Set(dstSerials.map((r) => r.item_id));
+    const conflict = rows.find((r) => dstItemIds.has(r.item_id));
+    if (conflict) { setError(`חייל היעד כבר מחזיק: ${conflict.item_name}`); return; }
+    setLoading(true); setError(null);
+    try {
+      await supabase.from('weapons_item_serials')
+        .update({ assigned_to_pn: dstSoldier.personal_number, assigned_to_name: dstSoldier.full_name, assigned_at: new Date().toISOString() })
+        .in('id', rows.map((r) => r.id));
+      setSuccess(`${rows.length} פריטים הועברו ל-${dstSoldier.full_name}`);
+      await loadAll(); resetForms();
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  }
+
+  const roshOverlap = srcSoldier && dstSoldier
+    ? (() => {
+        const sm: Record<string, SerialRow> = {}; for (const r of srcSerials) sm[r.item_id] = r;
+        const dm: Record<string, SerialRow> = {}; for (const r of dstSerials) dm[r.item_id] = r;
+        return Object.keys(sm).filter((id) => dm[id])
+          .map((id) => ({ itemId: id, itemName: sm[id].item_name, srcRow: sm[id], dstRow: dm[id] }));
+      })()
+    : [];
+
+  async function doRosh() {
+    if (!srcSoldier || !dstSoldier) { setError('בחר שני חיילים'); return; }
+    if (srcSoldier.unit_id !== dstSoldier.unit_id) { setError('לא ניתן לבצע ראש בראש בין מסגרות שונות'); return; }
+    const toSwap = roshOverlap.filter((o) => checked.has(o.itemId));
+    if (!toSwap.length) { setError('לא נבחרו פריטים'); return; }
+    setLoading(true); setError(null);
+    try {
+      const now = new Date().toISOString();
+      for (const p of toSwap) {
+        await supabase.from('weapons_item_serials')
+          .update({ assigned_to_pn: dstSoldier.personal_number, assigned_to_name: dstSoldier.full_name, assigned_at: now })
+          .eq('id', p.srcRow.id);
+        await supabase.from('weapons_item_serials')
+          .update({ assigned_to_pn: srcSoldier.personal_number, assigned_to_name: srcSoldier.full_name, assigned_at: now })
+          .eq('id', p.dstRow.id);
+      }
+      setSuccess(`ראש בראש בוצע ל-${toSwap.length} פריטים`);
+      await loadAll(); resetForms();
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  }
+
+  async function doIpasoon() {
+    const rows = srcSerials.filter((r) => checked.has(r.serial_number) && !r.is_zeroed);
+    if (!rows.length) { setError('לא נבחרו פריטים'); return; }
+    setLoading(true); setError(null);
+    try {
+      await supabase.from('weapons_item_serials')
+        .update({ is_zeroed: true, zeroed_at: new Date().toISOString() })
+        .in('id', rows.map((r) => r.id));
+      setSuccess(`${rows.length} פריטים אופסנו אצל ${srcSoldier?.full_name}`);
+      await loadAll(); resetForms();
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const TABS: { key: MainTab; label: string }[] = [
+    { key: 'zikhui',   label: 'זיכוי'     },
+    { key: 'transfer', label: 'העברה'      },
+    { key: 'rosh',     label: 'ראש בראש'  },
+    { key: 'ipasoon',  label: 'איפסון'    },
+  ];
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
@@ -64,114 +262,260 @@ export default function WeaponsTransferPage() {
         <p className="text-slate-500 text-sm mt-1">מבצע: {profile?.full_name}</p>
       </div>
 
-      {/* Mode selector */}
-      <div className="card p-2">
-        <div className="grid grid-cols-4 gap-1">
-          {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => { setMode(m); setError(null); setSuccess(null); }}
-              className={`rounded-lg py-2 px-1 text-sm font-bold transition ${
-                mode === m ? MODE_COLORS[m] : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-              }`}
-            >
-              {MODE_LABELS[m]}
-            </button>
-          ))}
-        </div>
+      {/* Tabs */}
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+        {TABS.map((t) => (
+          <button key={t.key} type="button"
+            onClick={() => { setTab(t.key); resetForms(); }}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+              tab === t.key ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-800'
+            }`}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      <div className="card space-y-4">
-        {/* Source */}
-        <div>
-          <label className="label">
-            {mode === 'credit' ? 'מספר אישי לזיכוי' : 'מספר אישי מקור'}
-          </label>
-          <input
-            className="input"
-            type="text"
-            inputMode="numeric"
-            maxLength={7}
-            placeholder="7 ספרות"
-            value={sourcePN}
-            onChange={(e) => setSourcePN(e.target.value)}
-          />
-        </div>
-
-        {/* Target — only for transfer/swap */}
-        {(mode === 'transfer' || mode === 'swap') && (
-          <div>
-            <label className="label">מספר אישי יעד</label>
-            <input
-              className="input"
-              type="text"
-              inputMode="numeric"
-              maxLength={7}
-              placeholder="7 ספרות"
-              value={targetPN}
-              onChange={(e) => setTargetPN(e.target.value)}
-            />
-          </div>
-        )}
-
-        {/* Items */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="label mb-0">בחר פריטים</label>
-            {selectedItems.size > 0 && (
-              <span className="badge bg-emerald-100 text-emerald-700">{selectedItems.size} נבחרו</span>
-            )}
-          </div>
-          <input
-            className="input mb-2"
-            type="text"
-            placeholder="חיפוש..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto">
-            {filteredItems.map((item) => (
-              <label
-                key={item.key}
-                className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition text-sm ${
-                  selectedItems.has(item.key)
-                    ? 'border-emerald-500 bg-emerald-50 text-slate-800 font-medium'
-                    : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  className="accent-emerald-600 shrink-0"
-                  checked={selectedItems.has(item.key)}
-                  onChange={() => toggleItem(item.key)}
-                />
-                {item.label}
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
-
+      {/* Feedback */}
       {success && (
-        <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-emerald-700 text-sm font-medium">
-          ✅ {success}
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-emerald-800 text-sm flex justify-between">
+          {success}
+          <button onClick={() => setSuccess(null)} className="text-emerald-600 hover:text-emerald-900 ml-2">×</button>
         </div>
       )}
       {error && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm">
+        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
           {error}
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-800 ml-2">×</button>
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={loading}
-        className={`w-full btn ${MODE_COLORS[mode]}`}
-      >
-        {loading ? 'מבצע...' : `בצע ${MODE_LABELS[mode]}`}
-      </button>
+      {/* ── זיכוי ── */}
+      {tab === 'zikhui' && (
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            {(['soldier','item'] as ZikhuiSub[]).map((k) => (
+              <button key={k} type="button"
+                onClick={() => { setZikhuiSub(k); resetForms(); }}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition ${
+                  zikhuiSub === k ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300'
+                }`}>
+                {k === 'soldier' ? 'זיכוי חייל' : 'זיכוי לפי פריט'}
+              </button>
+            ))}
+          </div>
+
+          {zikhuiSub === 'soldier' && (
+            <div className="card space-y-4">
+              <SoldierSearch label="חייל לזיכוי" soldiers={soldiers} selected={srcSoldier}
+                onSelect={(s) => { setSrcSoldier(s); setChecked(new Set()); }}
+                onClear={() => { setSrcSoldier(null); setChecked(new Set()); }} />
+              {srcSoldier && srcSerials.length === 0 && (
+                <p className="text-sm text-slate-400">אין פריטים חתומים</p>
+              )}
+              {srcSerials.length > 0 && (
+                <>
+                  <div className="space-y-2">
+                    {srcSerials.map((r) => (
+                      <label key={r.serial_number}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${
+                          checked.has(r.serial_number) ? 'border-red-300 bg-red-50' : 'border-slate-200 hover:border-slate-300'
+                        }`}>
+                        <input type="checkbox" className="accent-red-600 w-4 h-4"
+                          checked={checked.has(r.serial_number)} onChange={() => toggleCheck(r.serial_number)} />
+                        <span className="flex-1 text-sm font-medium">{r.item_name}</span>
+                        <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                        {r.is_zeroed && <span className="badge bg-orange-100 text-orange-700 text-xs">מאופסן</span>}
+                      </label>
+                    ))}
+                  </div>
+                  <button type="button" disabled={loading || !checked.size}
+                    onClick={() => doZikhui(srcSerials.filter((r) => checked.has(r.serial_number)).map((r) => r.id))}
+                    className="btn-danger w-full disabled:opacity-50">
+                    {loading ? 'מזכה...' : `זכה ${checked.size ? checked.size + ' פריטים' : ''}`}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {zikhuiSub === 'item' && (
+            <div className="card space-y-4">
+              <div>
+                <label className="label">בחר פריט</label>
+                <select className="input" value={zItemId}
+                  onChange={(e) => { setZItemId(e.target.value); setZSerial(''); setZSerialQ(''); }}>
+                  <option value="">-- בחר פריט --</option>
+                  {items.filter((i) => i.has_serials).map((i) => (
+                    <option key={i.id} value={i.id}>{i.name}</option>
+                  ))}
+                </select>
+              </div>
+              {zItemId && (() => {
+                const list = allSerials.filter((r) => r.item_id === zItemId);
+                const filtered = list.filter((r) =>
+                  !zSerialQ || r.serial_number.includes(zSerialQ) ||
+                  (r.assigned_to_name ?? '').includes(zSerialQ) || r.assigned_to_pn.includes(zSerialQ)
+                );
+                return (
+                  <>
+                    <input className="input font-mono text-sm" dir="ltr" placeholder="חיפוש צ׳ / שם..."
+                      value={zSerialQ} onChange={(e) => setZSerialQ(e.target.value)} />
+                    <div className="space-y-2 max-h-64 overflow-auto">
+                      {filtered.length === 0 && <p className="text-sm text-slate-400 text-center py-2">אין תוצאות</p>}
+                      {filtered.map((r) => (
+                        <label key={r.serial_number}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${
+                            zSerial === r.serial_number ? 'border-red-300 bg-red-50' : 'border-slate-200 hover:border-slate-300'
+                          }`}>
+                          <input type="radio" className="accent-red-600 w-4 h-4"
+                            checked={zSerial === r.serial_number} onChange={() => setZSerial(r.serial_number)} />
+                          <span className="font-mono text-sm" dir="ltr">{r.serial_number}</span>
+                          <span className="flex-1 text-sm text-slate-500">{r.assigned_to_name ?? r.assigned_to_pn}</span>
+                          {r.is_zeroed && <span className="badge bg-orange-100 text-orange-700 text-xs">מאופסן</span>}
+                        </label>
+                      ))}
+                    </div>
+                    {zSerial && (
+                      <button type="button" disabled={loading}
+                        onClick={() => {
+                          const row = allSerials.find((r) => r.item_id === zItemId && r.serial_number === zSerial);
+                          if (row) doZikhui([row.id]);
+                        }}
+                        className="btn-danger w-full disabled:opacity-50">
+                        {loading ? 'מזכה...' : `זכה צ׳ ${zSerial}`}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── העברה ── */}
+      {tab === 'transfer' && (
+        <div className="card space-y-4">
+          <SoldierSearch label="חייל מקור" soldiers={soldiers} selected={srcSoldier}
+            onSelect={(s) => { setSrcSoldier(s); setChecked(new Set()); }}
+            onClear={() => { setSrcSoldier(null); setChecked(new Set()); }} />
+          {srcSoldier && srcSerials.length === 0 && <p className="text-sm text-slate-400">אין פריטים חתומים</p>}
+          {srcSerials.length > 0 && (
+            <div className="space-y-2">
+              {srcSerials.map((r) => {
+                const atDst = dstSoldier ? dstSerials.some((d) => d.item_id === r.item_id) : false;
+                return (
+                  <label key={r.serial_number}
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition ${
+                      atDst ? 'opacity-40 cursor-not-allowed border-slate-200' :
+                      checked.has(r.serial_number) ? 'border-emerald-400 bg-emerald-50 cursor-pointer' : 'border-slate-200 hover:border-slate-300 cursor-pointer'
+                    }`}>
+                    <input type="checkbox" className="accent-emerald-600 w-4 h-4"
+                      checked={checked.has(r.serial_number)} disabled={atDst}
+                      onChange={() => toggleCheck(r.serial_number)} />
+                    <span className="flex-1 text-sm font-medium">{r.item_name}</span>
+                    <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                    {atDst && <span className="text-xs text-slate-400">כבר ביעד</span>}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <SoldierSearch label="חייל יעד" soldiers={soldiers.filter((s) => s.id !== srcSoldier?.id)}
+            selected={dstSoldier}
+            onSelect={setDstSoldier}
+            onClear={() => setDstSoldier(null)} />
+          {srcSoldier && dstSoldier && srcSoldier.unit_id !== dstSoldier.unit_id && (
+            <p className="text-sm text-red-600">החיילים ממסגרות שונות — העברה לא מותרת</p>
+          )}
+          {srcSoldier && dstSoldier && srcSoldier.unit_id === dstSoldier.unit_id && (
+            <button type="button" disabled={loading || !checked.size} onClick={doTransfer}
+              className="btn-primary w-full disabled:opacity-50">
+              {loading ? 'מעביר...' : `העבר ${checked.size ? checked.size + ' פריטים' : ''} → ${dstSoldier.full_name}`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── ראש בראש ── */}
+      {tab === 'rosh' && (
+        <div className="card space-y-4">
+          <SoldierSearch label="חייל א׳" soldiers={soldiers} selected={srcSoldier}
+            onSelect={(s) => { setSrcSoldier(s); setChecked(new Set()); }}
+            onClear={() => { setSrcSoldier(null); setChecked(new Set()); }} />
+          <SoldierSearch label="חייל ב׳" soldiers={soldiers.filter((s) => s.id !== srcSoldier?.id)}
+            selected={dstSoldier}
+            onSelect={(s) => { setDstSoldier(s); setChecked(new Set()); }}
+            onClear={() => { setDstSoldier(null); setChecked(new Set()); }} />
+          {srcSoldier && dstSoldier && srcSoldier.unit_id !== dstSoldier.unit_id && (
+            <p className="text-sm text-red-600">החיילים ממסגרות שונות — ראש בראש לא מותר</p>
+          )}
+          {srcSoldier && dstSoldier && srcSoldier.unit_id === dstSoldier.unit_id && (
+            roshOverlap.length === 0
+              ? <p className="text-sm text-slate-400 text-center py-2">אין פריטים חופפים</p>
+              : (
+                <>
+                  <div className="space-y-2">
+                    {roshOverlap.map((o) => (
+                      <label key={o.itemId}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${
+                          checked.has(o.itemId) ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-slate-300'
+                        }`}>
+                        <input type="checkbox" className="accent-teal-600 w-4 h-4"
+                          checked={checked.has(o.itemId)} onChange={() => toggleCheck(o.itemId)} />
+                        <span className="flex-1 text-sm font-medium">{o.itemName}</span>
+                        <span className="text-xs text-slate-500 font-mono" dir="ltr">
+                          {o.srcRow.serial_number} ⇄ {o.dstRow.serial_number}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <button type="button" disabled={loading || !checked.size} onClick={doRosh}
+                    className="btn-primary w-full !bg-teal-600 hover:!bg-teal-700 disabled:opacity-50">
+                    {loading ? 'מבצע...' : `ראש בראש — ${checked.size || ''} פריטים`}
+                  </button>
+                </>
+              )
+          )}
+        </div>
+      )}
+
+      {/* ── איפסון ── */}
+      {tab === 'ipasoon' && (
+        <div className="card space-y-4">
+          <p className="text-sm text-slate-500">
+            איפסון — הפריט נשאר חתום אצל החייל אך מסומן כמאופסן למעקב.
+          </p>
+          <SoldierSearch label="חייל לאיפסון" soldiers={soldiers} selected={srcSoldier}
+            onSelect={(s) => { setSrcSoldier(s); setChecked(new Set()); }}
+            onClear={() => { setSrcSoldier(null); setChecked(new Set()); }} />
+          {srcSoldier && srcSerials.length === 0 && <p className="text-sm text-slate-400">אין פריטים חתומים</p>}
+          {srcSerials.length > 0 && (
+            <>
+              <div className="space-y-2">
+                {srcSerials.map((r) => (
+                  <label key={r.serial_number}
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition ${
+                      r.is_zeroed ? 'border-orange-200 bg-orange-50 cursor-default' :
+                      checked.has(r.serial_number) ? 'border-orange-400 bg-orange-50 cursor-pointer' : 'border-slate-200 hover:border-slate-300 cursor-pointer'
+                    }`}>
+                    <input type="checkbox" className="accent-orange-500 w-4 h-4"
+                      checked={checked.has(r.serial_number)} disabled={r.is_zeroed}
+                      onChange={() => toggleCheck(r.serial_number)} />
+                    <span className="flex-1 text-sm font-medium">{r.item_name}</span>
+                    <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                    {r.is_zeroed && <span className="badge bg-orange-100 text-orange-700 text-xs">מאופסן</span>}
+                  </label>
+                ))}
+              </div>
+              <button type="button" disabled={loading || !checked.size} onClick={doIpasoon}
+                className="btn-primary w-full !bg-orange-500 hover:!bg-orange-600 disabled:opacity-50">
+                {loading ? 'מאפסן...' : `אפסן ${checked.size ? checked.size + ' פריטים' : ''}`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

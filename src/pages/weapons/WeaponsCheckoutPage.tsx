@@ -61,7 +61,7 @@ export default function WeaponsCheckoutPage() {
   const [selectedSoldier, setSelectedSoldier] = useState<SoldierRow | null>(null);
   const [suggestions, setSuggestions] = useState<SoldierRow[]>([]);
   const [showSugg, setShowSugg] = useState(false);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [, setAssignments] = useState<Assignment[]>([]);
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Edit soldier details
@@ -357,18 +357,6 @@ export default function WeaponsCheckoutPage() {
                     <button type="button" onClick={() => setEditMode(true)}
                       className="text-xs text-emerald-700 hover:text-emerald-900 shrink-0 mr-2">ערוך</button>
                   </div>
-                  {assignments.length > 0 && (
-                    <div className="pt-2 border-t border-slate-200">
-                      <p className="text-xs text-slate-500 mb-1.5 font-medium">נשק בהחזקה כרגע:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {assignments.map((a) => (
-                          <span key={a.serial_number} className="badge bg-amber-100 text-amber-800 text-xs">
-                            {a.item_name} · {a.serial_number}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 

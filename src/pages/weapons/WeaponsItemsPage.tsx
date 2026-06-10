@@ -246,7 +246,7 @@ export default function WeaponsItemsPage() {
               <tr>
                 <th>שם</th>
                 <th>תיאור</th>
-                <th>מלאי</th>
+                <th>מלאי (חתום / סה״כ)</th>
                 <th>סטטוס</th>
                 <th className="w-64"></th>
               </tr>

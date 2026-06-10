@@ -106,10 +106,12 @@ export default function DelekPage() {
       if (cardErr) throw cardErr;
       if (!card) throw new Error(`כרטיס ${cn} לא קיים במערכת`);
 
-      // Upload the receipt to Storage: fuel-receipts/{card}/{driver date}.ext
-      const ext = (receiptFile.name.split('.').pop() || 'jpg').toLowerCase();
-      const dateStr = new Date().toLocaleDateString('he-IL').replace(/\//g, '-');
-      const path = `${cn}/${driverName.trim()} ${dateStr}-${Date.now()}.${ext}`;
+      // Upload the receipt to Storage. Object keys must be ASCII (no Hebrew/
+      // spaces), so the path is just card/timestamp — the driver name & date
+      // live in the fuel_logs row. Sanitize the card number too, to be safe.
+      const ext = (receiptFile.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const safeCard = cn.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const path = `${safeCard}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from('fuel-receipts')
         .upload(path, receiptFile, { contentType: receiptFile.type || 'image/jpeg', upsert: true });

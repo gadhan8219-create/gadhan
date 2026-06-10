@@ -5,13 +5,17 @@ import type { WeaponsItem } from '../../lib/database.types';
 
 // ── Drive PDF helper ─────────────────────────────────────────────────────────
 
-interface CreditPdfArgs {
-  soldier: { full_name: string; personal_number: string; unit_name: string };
-  credited_items: Array<{ name: string; serial: string | null }>;
+interface PdfCallArgs {
+  title: string;
+  note?: string;
+  soldier: { full_name: string; personal_number: string; unit_name: string; phone?: string };
+  items: Array<{ name: string; quantity: number; serial?: string | null }>;
   performed_by: string;
+  drive_path: string[];
+  filename: string;
 }
 
-async function callCreditPdf(args: CreditPdfArgs): Promise<{ credit_url: string; checkout_url: string | null }> {
+async function callPdfFn(args: PdfCallArgs): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
   const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-weapon-checkout-pdf`;
   const resp = await fetch(fnUrl, {
@@ -21,17 +25,17 @@ async function callCreditPdf(args: CreditPdfArgs): Promise<{ credit_url: string;
       'Authorization': `Bearer ${session?.access_token ?? ''}`,
       'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
     },
-    body: JSON.stringify({
-      type: 'credit',
-      soldier: args.soldier,
-      credited_items: args.credited_items,
-      performed_by: args.performed_by,
-      timestamp: new Date().toISOString(),
-    }),
+    body: JSON.stringify({ ...args, timestamp: new Date().toISOString() }),
   });
   const result = await resp.json();
   if (!result.ok) throw new Error(result.error ?? 'PDF generation failed');
-  return { credit_url: result.credit_url, checkout_url: result.checkout_url ?? null };
+  return result.url as string;
+}
+
+interface ZikhuiPdfCtx {
+  soldier: { full_name: string; personal_number: string; unit_name: string };
+  credited_items: Array<{ name: string; serial: string | null; quantity: number }>;
+  performed_by: string;
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -200,7 +204,7 @@ export default function WeaponsTransferPage() {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  async function doZikhui(ids: string[], pdfCtx?: CreditPdfArgs) {
+  async function doZikhui(ids: string[], pdfCtx?: ZikhuiPdfCtx) {
     if (!ids.length) { setError('לא נבחרו פריטים'); return; }
     setLoading(true); setError(null);
     try {
@@ -212,8 +216,46 @@ export default function WeaponsTransferPage() {
       // 2. Generate PDFs (best-effort — DB already updated)
       if (pdfCtx) {
         try {
-          const { credit_url } = await callCreditPdf(pdfCtx);
-          setSuccess(`${ids.length} פריטים הוחזרו · PDF נשמר: ${credit_url}`);
+          const { soldier, credited_items, performed_by } = pdfCtx;
+          const filename = `${soldier.full_name}.pdf`;
+
+          // 2a. Credit PDF
+          const creditUrl = await callPdfFn({
+            title:      'זיכוי נשק',
+            soldier,
+            items:      credited_items,
+            performed_by,
+            drive_path: ['נשקיה', soldier.unit_name, 'זיכויים'],
+            filename,
+          });
+
+          // 2b. Query remaining assignments
+          const { data: remaining } = await supabase
+            .from('weapons_item_serials')
+            .select('serial_number, weapons_items(name)')
+            .eq('assigned_to_pn', soldier.personal_number)
+            .not('assigned_to_pn', 'is', null);
+
+          if (remaining && remaining.length > 0) {
+            // Partial credit → update checkout PDF with remaining items
+            const dateStr = new Date().toLocaleDateString('he-IL');
+            await callPdfFn({
+              title:      'סיכום נשק בהחזקה',
+              note:       `עודכן לאחר זיכוי חלקי · ${dateStr}`,
+              soldier,
+              items:      (remaining as any[]).map((r) => ({
+                            name:     r.weapons_items?.name ?? '—',
+                            serial:   r.serial_number,
+                            quantity: 1,
+                          })),
+              performed_by,
+              drive_path: ['נשקיה', soldier.unit_name, 'החתמות'],
+              filename,
+            });
+          }
+
+          setSuccess(`${ids.length} פריטים הוחזרו · PDF נשמר`);
+          void creditUrl; // URL available if needed
         } catch (pdfErr) {
           setSuccess(`${ids.length} פריטים הוחזרו (PDF לא נוצר: ${(pdfErr as Error).message})`);
         }
@@ -379,7 +421,7 @@ export default function WeaponsTransferPage() {
                         toCredit.map((r) => r.id),
                         srcSoldier ? {
                           soldier: { full_name: srcSoldier.full_name, personal_number: srcSoldier.personal_number, unit_name: srcSoldier.unit_name },
-                          credited_items: toCredit.map((r) => ({ name: r.item_name, serial: r.serial_number })),
+                          credited_items: toCredit.map((r) => ({ name: r.item_name, serial: r.serial_number, quantity: 1 })),
                           performed_by: profile?.full_name ?? '',
                         } : undefined,
                       );
@@ -439,7 +481,7 @@ export default function WeaponsTransferPage() {
                             [row.id],
                             soldierRow ? {
                               soldier: { full_name: soldierRow.full_name, personal_number: soldierRow.personal_number, unit_name: soldierRow.unit_name },
-                              credited_items: [{ name: row.item_name, serial: row.serial_number }],
+                              credited_items: [{ name: row.item_name, serial: row.serial_number, quantity: 1 }],
                               performed_by: profile?.full_name ?? '',
                             } : undefined,
                           );

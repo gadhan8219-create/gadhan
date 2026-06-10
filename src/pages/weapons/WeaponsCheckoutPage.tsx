@@ -504,12 +504,14 @@ export default function WeaponsCheckoutPage() {
           'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({
-          type:    'checkout',
-          soldier: { full_name: activeName, personal_number: activePN, phone, unit_name: unitName, team_name: teamName },
-          items:   itemsPayload,
+          title:    'החתמת נשק',
+          soldier:  { full_name: activeName, personal_number: activePN, phone, unit_name: unitName, team_name: teamName },
+          items:    itemsPayload,
           signature_png_b64: signaturePng,
           performed_by: profile?.full_name ?? '',
-          timestamp: now,
+          timestamp:    now,
+          drive_path:   ['נשקיה', unitName, 'החתמות'],
+          filename:     `${activeName}.pdf`,
         }),
       });
 

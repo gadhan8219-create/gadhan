@@ -4,7 +4,8 @@
 
 // deno-lint-ignore-file no-explicit-any
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.108.1';
+import { resolveServiceKey } from '../_shared/serviceKey.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,8 +25,8 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const serviceKey = resolveServiceKey();
 
     // 1. Verify caller is an admin.
     const auth = req.headers.get('Authorization');
@@ -44,6 +45,8 @@ serve(async (req) => {
       .eq('id', who.user.id)
       .single();
     if (profErr || callerProfile?.role !== 'admin') {
+      // Log details server-side for debugging; return a generic message to the client.
+      if (profErr) console.error('[manage-users] admin lookup failed:', profErr.message);
       return jsonResponse({ ok: false, error: 'Admin only' }, 403);
     }
 

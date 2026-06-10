@@ -163,10 +163,16 @@ WEAPONS_CHECKOUT_DRIVE_FOLDER_ID — Root folder ID ב-Drive
 
 **GAS web-app (proxy לDrive):**
 ```
-URL: https://script.google.com/macros/s/AKfycbyCg1GFpHOL67VKG0kEPB51C4sBT1WW4XLZYX8PZQZZbuNUAp_kr05Y09z00d2-B4MX/exec
+URL: משתנה בכל deploy חדש — נשמר ב-secret GAS_PDF_URL.
+נכון ל-2026-06-11: https://script.google.com/macros/s/AKfycbwDFe21D1PxUVRdoLqumMxi_KUxWGIqA8kMxQvg0ziDOygLPdIAujfvqbIYmvtWSlfP/exec
 ```
 actions: `savePdf` (pdfBase64) | `savePdfFromHtml` (html → PDF) | `sendErrorEmail`
 ה-GAS רץ תחת חשבון המשתמש ← אין בעיית Drive quota (SA quota = 0)
+
+> ⚠️ **GAS deploy gotcha:** עריכה בעורך ≠ deployed. ה-URL `/exec` נעול לגרסה.
+> action חדש בקוד בלי New version → ה-URL מחזיר `Unknown action: X`.
+> Deploy → Manage deployments → Edit (עיפרון) → New version → Deploy (שומר URL).
+> אם עושים New deployment (URL חדש) → לעדכן `supabase secrets set GAS_PDF_URL=...`.
 
 **שגיאות — אימייל אוטומטי:**
 אם edge function נכשל → קוראת `sendErrorEmail` ל-GAS → `MailApp.sendEmail('gadhan8219@gmail.com', ...)`.
@@ -368,9 +374,26 @@ VITE_SUPABASE_ANON_KEY
 npm run build   # tsc + vite build → dist/
 ```
 
+### Edge Functions
+```bash
+supabase functions deploy <name>   # CLI עובד (בעיית SSL הישנה נפתרה)
+```
+**Secret key לשירות (service role):** הפרויקט עבר ל-API keys החדשים (`sb_secret_…`).
+- אסור להסתמך על `SUPABASE_SERVICE_ROLE_KEY` (legacy JWT, עבר downgrade ל-anon).
+- להשתמש ב-helper `supabase/functions/_shared/serviceKey.ts` → `resolveServiceKey()`
+  (קורא את `SUPABASE_SECRET_KEYS`, שמוזרק כ-JSON object `{"default":"sb_secret_…"}`).
+- supabase-js חייב להיות `2.108.1`+ (הישן שולח `sb_secret_` כ-JWT bearer ← נדחה).
+
 ---
 
 ## 9. מלכודות נפוצות
+
+### Edge function: "permission denied for table" / "Invalid API key"
+שתי סיבות אפשריות (שתיהן קרו ביוני 2026):
+1. **key פורמט חדש** — ראה "Edge Functions" למעלה (resolveServiceKey + supabase-js 2.108.1).
+2. **GRANT חסר** — טבלה שנוצרה כ-raw superuser לא קיבלה grants ל-service_role.
+   תיקון: מיגרציה `0017_restore_api_role_grants.sql` (grant all in schema public to anon/authenticated/service_role).
+   service_role עם BYPASSRLS עדיין צריך GRANT ברמת טבלה — RLS ≠ GRANT.
 
 ### Auth loading
 `loading` מ-`useAuth()` כולל גם session וגם profile load.

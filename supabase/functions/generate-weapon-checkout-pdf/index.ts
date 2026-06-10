@@ -48,12 +48,23 @@ async function loadHeebo(): Promise<Uint8Array> {
   return cachedFont;
 }
 
+// ── BiDi pre-reversal ─────────────────────────────────────────────────────────
+// pdf-lib + Heebo applies the Unicode BiDi algorithm: in an RTL paragraph,
+// LTR character runs (digits, Latin) are visually reversed.
+// Pre-reversing those runs compensates, yielding correct visual order.
+function h(text: string): string {
+  return text.replace(/[^א-״יִ-פֿ]+/g, (m) =>
+    m.split('').reverse().join('')
+  );
+}
+
 // ── RTL draw helper ───────────────────────────────────────────────────────────
 function drawRight(
   page: PDFPage, text: string, rx: number, y: number,
   font: PDFFont, size: number, color = rgb(0, 0, 0),
 ) {
-  page.drawText(text, { x: rx - font.widthOfTextAtSize(text, size), y, size, font, color });
+  const t = h(text);
+  page.drawText(t, { x: rx - font.widthOfTextAtSize(t, size), y, size, font, color });
 }
 
 // ── PDF builder ───────────────────────────────────────────────────────────────

@@ -127,6 +127,13 @@ interface Profile {
 
 ### Edge Function — יצירת PDF
 **שם:** `generate-weapon-checkout-pdf`
+
+> ⚠️ **PDF נוצר ב-GAS מ-HTML, לא ב-pdf-lib.** ה-edge function בונה מחרוזת HTML (RTL)
+> ושולח ל-GAS דרך action `savePdfFromHtml`. ה-GAS ממיר ל-PDF עם
+> `Utilities.newBlob(html, 'text/html').getAs('application/pdf')` — מנוע ה-HTML של Google
+> תומך BiDi מלא, ולכן עברית + מספרים (טלפון/תאריך/צ׳) יוצאים תקין.
+> **רקע:** pdf-lib הפך ספרות בטקסט RTL (טלפון 0504484377 → 7734844050). HTML→PDF פתר את זה.
+
 **Secrets נדרשים:**
 ```
 GAS_PDF_URL                      — כתובת GAS web-app לשמירת PDF ב-Drive
@@ -158,7 +165,7 @@ WEAPONS_CHECKOUT_DRIVE_FOLDER_ID — Root folder ID ב-Drive
 ```
 URL: https://script.google.com/macros/s/AKfycbyCg1GFpHOL67VKG0kEPB51C4sBT1WW4XLZYX8PZQZZbuNUAp_kr05Y09z00d2-B4MX/exec
 ```
-actions: `savePdf` | `sendErrorEmail`
+actions: `savePdf` (pdfBase64) | `savePdfFromHtml` (html → PDF) | `sendErrorEmail`
 ה-GAS רץ תחת חשבון המשתמש ← אין בעיית Drive quota (SA quota = 0)
 
 **שגיאות — אימייל אוטומטי:**

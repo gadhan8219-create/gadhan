@@ -18,7 +18,7 @@
 
 ### למה זה חובה?
 - הפרויקט מכיל 3 מודולים עם patterns שונים
-- יש gotchas ספציפיים (SSL, Drive quota, fire-and-forget PDF)
+- יש gotchas ספציפיים (Drive quota, fire-and-forget PDF, PDF נוצר ב-GAS)
 - ללא הקריאה — סיכון לשכפול קוד, שגיאות deploy, ושבירת patterns קיימים
 
 ---
@@ -60,9 +60,13 @@ Vercel מחובר ל-GitHub — כל push ל-main מפעיל deploy אוטומט
 לא צריך פקודת deploy ידנית.
 
 ### פריסה — Edge Functions
-**⚠️ בעיית SSL ברשת המשתמש — לא ניתן להשתמש ב-CLI.**
-פריסה של edge functions: **Supabase Dashboard → copy-paste בלבד.**
-`supabase secrets set` עובד תקין דרך CLI.
+פריסה דרך CLI עובדת:
+```bash
+cd ~/Documents/gadhan-all
+supabase functions deploy <name>
+```
+`supabase secrets set` גם עובד תקין דרך CLI.
+(בעבר הייתה בעיית SSL `UnknownIssuer` שחסמה את ה-CLI — נפתרה.)
 
 ### Supabase
 ```typescript

@@ -8,36 +8,42 @@ const navItems = [
 
 // ── קשר ──
 const radioItems = [
-  { to: '/sign', label: 'החתמה חדשה' },
-  { to: '/soldiers', label: 'חיילים' },
-  { to: '/signings', label: 'כל ההחתמות' },
-  { to: '/logs', label: 'יומן ביקורת' },
+  { to: '/sign', label: 'החתמת חייל' },
+];
+const radioAdminItems = [
+  { to: '/unit-sign', label: 'החתמת מסגרת' },
+  { to: '/items', label: 'ניהול פריטי קשר' },
 ];
 const reportsChildren = [
   { to: '/reports', label: 'ייצוא דוחות' },
   { to: '/unit-stock', label: 'דוח מלאי / בדיקות' },
 ];
+const reportsAdminChildren = [
+  { to: '/unit-signings', label: 'החתמות מסגרת' },
+];
 
-// ── נשקים ──
+// ── נשק ──
 const weaponsItems = [
-  { to: '/weapons/checkout', label: 'דוח צלם' },
-  { to: '/weapons/inventory', label: 'מלאי נשקים' },
+  { to: '/weapons/checkout', label: 'החתמת נשק' },
   { to: '/weapons/transfer', label: 'העברה / זיכוי' },
+  { to: '/weapons/inventory', label: 'סיכום נשקייה לפי מסגרת' },
+];
+const weaponsAdminItems = [
+  { to: '/weapons/armory', label: 'ניהול פריטי נשקיה' },
 ];
 
 // ── דלק ──
 const delekItems = [
   { to: '/delek', label: 'תדלוק' },
 ];
-
-// ── מנהל ──
-const adminItems = [
-  { to: '/unit-sign', label: 'החתמת מסגרת' },
-  { to: '/unit-signings', label: 'החתמות מסגרות' },
-  { to: '/items', label: 'ניהול פריטים' },
-  { to: '/soldiers-import', label: 'ייבוא חיילים' },
-  { to: '/weapons/armory', label: 'ספירת נשקייה' },
+const delekAdminItems = [
   { to: '/delek/admin', label: 'ניהול כרטיסי דלק' },
+];
+
+// ── ניהול מערכת ──
+const adminItems = [
+  { to: '/soldiers-import', label: 'ייבוא חיילים' },
+  { to: '/soldiers', label: 'רשימת חיילים' },
   { to: '/users', label: 'ניהול משתמשים' },
 ];
 
@@ -52,7 +58,8 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = profile?.role === 'admin';
-  const reportsActive = reportsChildren.some((c) => location.pathname.startsWith(c.to));
+  const allReportsChildren = [...reportsChildren, ...(isAdmin ? reportsAdminChildren : [])];
+  const reportsActive = allReportsChildren.some((c) => location.pathname.startsWith(c.to));
   const [reportsOpen, setReportsOpen] = useState(reportsActive);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -107,17 +114,20 @@ export default function Layout() {
           {radioItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
           ))}
+          {isAdmin && radioAdminItems.map((item) => (
+            <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
+          ))}
           <div>
             <button type="button" onClick={() => setReportsOpen((v) => !v)}
               className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
                 reportsActive ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800'
               }`}>
-              <span>דוחות</span>
+              <span>דוחות קשר</span>
               <span className="text-xs">{reportsOpen ? '▾' : '◂'}</span>
             </button>
             {reportsOpen && (
               <div className="mt-1 mr-3 space-y-0.5">
-                {reportsChildren.map((c) => (
+                {allReportsChildren.map((c) => (
                   <NavLink key={c.to} to={c.to}
                     className={({ isActive }) =>
                       `block rounded-lg px-3 py-1.5 text-xs transition ${
@@ -130,9 +140,12 @@ export default function Layout() {
             )}
           </div>
 
-          {/* ── נשקים ── */}
-          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">🔫 נשקים</div>
+          {/* ── נשק ── */}
+          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">🔫 נשק</div>
           {weaponsItems.map((item) => (
+            <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
+          ))}
+          {isAdmin && weaponsAdminItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
           ))}
 
@@ -141,11 +154,14 @@ export default function Layout() {
           {delekItems.map((item) => (
             <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
           ))}
+          {isAdmin && delekAdminItems.map((item) => (
+            <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
+          ))}
 
-          {/* ── מנהל ── */}
+          {/* ── ניהול מערכת ── */}
           {isAdmin && (
             <>
-              <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">⚙️ מנהל מערכת</div>
+              <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">⚙️ ניהול מערכת</div>
               {adminItems.map((item) => (
                 <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
               ))}

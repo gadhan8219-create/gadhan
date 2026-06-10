@@ -19,7 +19,7 @@ import SoldiersImportPage from './pages/SoldiersImportPage';
 import WeaponsCheckoutPage from './pages/weapons/WeaponsCheckoutPage';
 import WeaponsInventoryPage from './pages/weapons/WeaponsInventoryPage';
 import WeaponsTransferPage from './pages/weapons/WeaponsTransferPage';
-import ArmoryCountPage from './pages/weapons/ArmoryCountPage';
+import WeaponsItemsPage from './pages/weapons/WeaponsItemsPage';
 // Delek pages
 import DelekPage from './pages/delek/DelekPage';
 import DelekAdminPage from './pages/delek/DelekAdminPage';
@@ -49,7 +49,7 @@ export default function App() {
         <Route path="weapons/checkout" element={<WeaponsCheckoutPage />} />
         <Route path="weapons/inventory" element={<WeaponsInventoryPage />} />
         <Route path="weapons/transfer" element={<WeaponsTransferPage />} />
-        <Route path="weapons/armory" element={<ProtectedRoute requireAdmin><ArmoryCountPage /></ProtectedRoute>} />
+        <Route path="weapons/armory" element={<ProtectedRoute requireAdmin><WeaponsItemsPage /></ProtectedRoute>} />
 
         {/* ── דלק (Delek) ── */}
         <Route path="delek" element={<DelekPage />} />

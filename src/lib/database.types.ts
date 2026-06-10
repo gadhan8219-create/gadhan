@@ -48,6 +48,9 @@ export interface Item {
   name: string;
   description: string | null;
   category: string | null;
+  module: string;        // 'radio' | 'weapons'
+  has_serials: boolean;  // true = tracked by serial, false = tracked by quantity
+  quantity: number | null; // used when has_serials = false
   active: boolean;
   created_at: string;
 }

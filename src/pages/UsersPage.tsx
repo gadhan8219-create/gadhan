@@ -1,8 +1,27 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { logAudit } from '../lib/audit';
 import type { Profile, Role, Unit } from '../lib/database.types';
+
+// supabase.functions.invoke wraps every non-2xx response in a generic
+// FunctionsHttpError ("Edge Function returned a non-2xx status code") and sets
+// data=null — so the real server message is hidden. Pull it out of the raw
+// Response (error.context) so the user sees what actually failed.
+async function invokeManageUsers(body: Record<string, unknown>): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('manage-users', { body });
+  if (error) {
+    let msg = error.message;
+    if (error instanceof FunctionsHttpError) {
+      const parsed = await error.context.json().catch(() => null);
+      if (parsed?.error) msg = parsed.error;
+    }
+    throw new Error(msg);
+  }
+  const res = (data ?? {}) as { ok: boolean; error?: string };
+  if (!res.ok) throw new Error(res.error ?? 'שגיאה לא ידועה');
+}
 
 interface NewUserForm {
   username: string;
@@ -64,23 +83,16 @@ export default function UsersPage() {
     }
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('manage-users', {
-        body: {
-          action: 'create',
-          username,
-          password: form.password,
-          full_name: form.full_name.trim(),
-          role: form.role,
-          unit_id: form.unit_id || null,
-          personal_number: form.personal_number.trim() || null,
-          phone: form.phone.trim() || null,
-        },
+      await invokeManageUsers({
+        action: 'create',
+        username,
+        password: form.password,
+        full_name: form.full_name.trim(),
+        role: form.role,
+        unit_id: form.unit_id || null,
+        personal_number: form.personal_number.trim() || null,
+        phone: form.phone.trim() || null,
       });
-      // supabase.functions.invoke throws a generic "non-2xx" error for HTTP errors.
-      // The actual error message is in `data` (the response body is always parsed).
-      const res = (data ?? {}) as { ok: boolean; error?: string };
-      if (error && !res.error) throw error;   // real network error
-      if (!res.ok) throw new Error(res.error ?? error?.message ?? 'שגיאה לא ידועה');
       setFeedback({ type: 'success', msg: 'המשתמש נוצר בהצלחה' });
       setForm(EMPTY_FORM);
       setShowAdd(false);
@@ -98,12 +110,7 @@ export default function UsersPage() {
     }
     if (!confirm(`למחוק את "${p.full_name}" לצמיתות? פעולה זו לא ניתנת לביטול.`)) return;
     try {
-      const { data, error } = await supabase.functions.invoke('manage-users', {
-        body: { action: 'delete', user_id: p.id },
-      });
-      const res = (data ?? {}) as { ok: boolean; error?: string };
-      if (error && !res.error) throw error;
-      if (!res.ok) throw new Error(res.error ?? error?.message ?? 'שגיאה לא ידועה');
+      await invokeManageUsers({ action: 'delete', user_id: p.id });
       setFeedback({ type: 'success', msg: 'המשתמש נמחק' });
       load();
     } catch (err) {

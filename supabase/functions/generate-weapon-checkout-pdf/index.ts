@@ -153,6 +153,32 @@ async function uploadHtmlViaGas(
   return result.url!;
 }
 
+// ── GAS delete (trash a PDF in Drive) ──────────────────────────────────────────────
+async function deletePdfViaGas(
+  gasUrl: string,
+  gasSecret: string,
+  rootFolderId: string,
+  drivePath: string[],
+  filename: string,
+): Promise<boolean> {
+  const resp = await fetch(gasUrl, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      secret:       gasSecret,
+      action:       'deletePdf',
+      rootFolderId,
+      drivePath,
+      filename,
+    }),
+  });
+  if (!resp.ok) throw new Error(`GAS call failed (${resp.status}): ${await resp.text()}`);
+  const result = await resp.json() as { ok: boolean; deleted?: boolean; error?: string };
+  if (!result.ok) throw new Error(`GAS error: ${result.error}`);
+  return result.deleted ?? false;
+}
+
 // ── CORS + JSON response ──────────────────────────────────────────────────────────
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -205,6 +231,22 @@ serve(async (req) => {
     // Parse body
     const body = await req.json().catch(() => null);
     if (!body) return jsonRes({ ok: false, error: 'Invalid JSON body' }, 400);
+
+    // Delete mode: trash an existing PDF (used on full return to remove the
+    // soldier's החתמות file). Requires only drive_path + filename.
+    if (body.action === 'delete') {
+      if (!body.drive_path || !body.filename) {
+        return jsonRes({ ok: false, error: 'Missing drive_path / filename' }, 400);
+      }
+      const deleted = await deletePdfViaGas(gasUrl, gasSecret, rootFolder, body.drive_path, body.filename);
+      const sbDel = createClient(supabaseUrl, serviceKey);
+      await sbDel.from('audit_logs').insert({
+        action: 'weapons.pdf_deleted',
+        performed_by: who.user.id,
+        details: { drive_path: body.drive_path, filename: body.filename, deleted },
+      });
+      return jsonRes({ ok: true, deleted });
+    }
 
     const { title, note, soldier, items, performed_by, timestamp, signature_png_b64, drive_path, filename } = body;
     if (!title || !soldier?.full_name || !items || !performed_by || !drive_path || !filename) {

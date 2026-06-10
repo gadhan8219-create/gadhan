@@ -81,6 +81,9 @@ export default function UsersPage() {
     if (form.password.length < 6) {
       return setFeedback({ type: 'error', msg: 'סיסמה חייבת להיות לפחות 6 תווים' });
     }
+    if (form.role === 'raspar' && !form.unit_id) {
+      return setFeedback({ type: 'error', msg: 'רס"פ חייב להיות משויך למסגרת' });
+    }
     setSubmitting(true);
     try {
       await invokeManageUsers({
@@ -89,7 +92,7 @@ export default function UsersPage() {
         password: form.password,
         full_name: form.full_name.trim(),
         role: form.role,
-        unit_id: form.unit_id || null,
+        unit_id: form.role === 'admin' ? null : (form.unit_id || null),
         personal_number: form.personal_number.trim() || null,
         phone: form.phone.trim() || null,
       });
@@ -164,18 +167,28 @@ export default function UsersPage() {
           </div>
           <div>
             <label className="label">תפקיד *</label>
-            <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
+            <select
+              className="input"
+              value={form.role}
+              onChange={(e) => {
+                const role = e.target.value as Role;
+                // מנהל מערכת אינו משויך למסגרת — מנקים את הבחירה.
+                setForm({ ...form, role, unit_id: role === 'admin' ? '' : form.unit_id });
+              }}
+            >
               <option value="raspar">רס"פ</option>
               <option value="admin">מנהל מערכת</option>
             </select>
           </div>
-          <div>
-            <label className="label">מסגרת</label>
-            <select className="input" value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })}>
-              <option value="">— ללא —</option>
-              {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-          </div>
+          {form.role === 'raspar' && (
+            <div>
+              <label className="label">מסגרת *</label>
+              <select className="input" value={form.unit_id} onChange={(e) => setForm({ ...form, unit_id: e.target.value })} required>
+                <option value="">בחר מסגרת</option>
+                {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label className="label">מספר אישי</label>
             <input className="input" value={form.personal_number} onChange={(e) => setForm({ ...form, personal_number: e.target.value })} />

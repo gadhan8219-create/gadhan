@@ -379,15 +379,28 @@ export default function WeaponsCheckoutPage() {
       }
       await Promise.all(dbUpdates);
 
-      // 2. Build items payload for PDF
-      const itemsPayload = validLines.map((line) => {
-        const item = weaponItems.find((i) => i.id === line.itemId);
-        return {
-          name:     item?.name ?? line.itemId,
-          serial:   item?.has_serials ? line.serial.trim() : null,
-          quantity: item?.has_serials ? 1 : (parseInt(line.quantity) || 1),
-        };
-      });
+      // 2. Build items payload for PDF — ALL items the soldier currently holds
+      //    (existing assignments + the ones just added), not only the new lines.
+      //    Re-query after the DB update so the PDF reflects the true holding.
+      const { data: held } = await supabase
+        .from('weapons_item_serials')
+        .select('serial_number, weapons_items(name)')
+        .eq('assigned_to_pn', activePN)
+        .not('assigned_to_pn', 'is', null);
+
+      const isQty = (s: string) => s.startsWith('__qty__');
+      const qtyMap = new Map<string, { name: string; qty: number }>();
+      const itemsPayload: Array<{ name: string; serial: string | null; quantity: number }> = [];
+      for (const r of (held ?? []) as any[]) {
+        const name = r.weapons_items?.name ?? '—';
+        if (isQty(r.serial_number)) {
+          const cur = qtyMap.get(name);
+          if (cur) cur.qty++; else qtyMap.set(name, { name, qty: 1 });
+        } else {
+          itemsPayload.push({ name, serial: r.serial_number, quantity: 1 });
+        }
+      }
+      for (const v of qtyMap.values()) itemsPayload.push({ name: v.name, serial: null, quantity: v.qty });
 
       // 3. Gather soldier info for PDF
       const unitName = mode === 'existing'

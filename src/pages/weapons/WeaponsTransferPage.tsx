@@ -32,6 +32,43 @@ async function callPdfFn(args: PdfCallArgs): Promise<string> {
   return result.url as string;
 }
 
+/** Trash an existing PDF in Drive (used on full return to drop the החתמות file). */
+async function callDeletePdfFn(args: { drive_path: string[]; filename: string }): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-weapon-checkout-pdf`;
+  const resp = await fetch(fnUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session?.access_token ?? ''}`,
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ action: 'delete', ...args }),
+  });
+  const result = await resp.json();
+  if (!result.ok) throw new Error(result.error ?? 'PDF delete failed');
+}
+
+/** Collapse weapons_returns rows into PDF line-items: serial items listed
+ *  individually; non-serial (quantity) items grouped by name with a count. */
+function buildItemsFromReturns(
+  rows: Array<{ item_name: string | null; serial: string | null }>,
+): Array<{ name: string; serial: string | null; quantity: number }> {
+  const qtyMap = new Map<string, { name: string; serial: null; quantity: number }>();
+  const out: Array<{ name: string; serial: string | null; quantity: number }> = [];
+  for (const r of rows) {
+    const name = r.item_name ?? '—';
+    if (!r.serial) {
+      const cur = qtyMap.get(name);
+      if (cur) { cur.quantity++; }
+      else { const o = { name, serial: null as null, quantity: 1 }; qtyMap.set(name, o); out.push(o); }
+    } else {
+      out.push({ name, serial: r.serial, quantity: 1 });
+    }
+  }
+  return out;
+}
+
 interface ZikhuiPdfCtx {
   soldier: { full_name: string; personal_number: string; unit_name: string };
   credited_items: Array<{ name: string; serial: string | null; quantity: number }>;
@@ -211,55 +248,84 @@ export default function WeaponsTransferPage() {
     if (!ids.length) { setError('לא נבחרו פריטים'); return; }
     setLoading(true); setError(null);
     try {
-      // 1. Clear assignments in DB
+      // 1. Record the returns BEFORE clearing — weapons_returns is the cumulative
+      //    source of truth for the זיכויים PDF (clearing assigned_to_pn erases
+      //    the only trace that the soldier ever held these items).
+      if (pdfCtx) {
+        const { soldier, credited_items } = pdfCtx;
+        await supabase.from('weapons_returns').insert(
+          credited_items.map((it) => ({
+            soldier_pn:   soldier.personal_number,
+            soldier_name: soldier.full_name,
+            unit_name:    soldier.unit_name,
+            item_name:    it.name,
+            serial:       it.serial,
+            performed_by: profile?.id ?? null,
+          })),
+        );
+      }
+
+      // 2. Clear assignments in DB
       await supabase.from('weapons_item_serials')
         .update({ assigned_to_pn: null, assigned_to_name: null, assigned_at: null, is_zeroed: false })
         .in('id', ids);
 
-      // 2. Show success immediately — PDFs fire in background
+      // 3. Show success immediately — PDFs fire in background
       setSuccess(`${ids.length} פריטים הוחזרו לגדוד`);
       await loadAll();
       resetForms();
 
-      // 3. Fire PDFs in background (no await) — error email sent by backend if they fail
+      // 4. Fire PDFs in background (no await) — error email sent by backend if they fail
       if (pdfCtx) {
-        const { soldier, credited_items, performed_by } = pdfCtx;
+        const { soldier, performed_by } = pdfCtx;
         const filename = `${soldier.full_name}.pdf`;
+        const dateStr  = new Date().toLocaleDateString('he-IL');
 
-        callPdfFn({
-          title:      'זיכוי נשק',
-          soldier,
-          items:      credited_items,
-          performed_by,
-          drive_path: ['נשקיה', soldier.unit_name, 'זיכויים'],
-          filename,
-        })
-          .then(async () => {
-            // After credit PDF: check for remaining items → update checkout PDF
-            const { data: remaining } = await supabase
-              .from('weapons_item_serials')
-              .select('serial_number, weapons_items(name)')
-              .eq('assigned_to_pn', soldier.personal_number)
-              .not('assigned_to_pn', 'is', null);
+        // 4a. זיכויים PDF — CUMULATIVE: every item this soldier has ever returned.
+        (async () => {
+          const { data: allReturns } = await supabase
+            .from('weapons_returns')
+            .select('item_name, serial')
+            .eq('soldier_pn', soldier.personal_number)
+            .order('returned_at');
+          await callPdfFn({
+            title:      'זיכוי נשק',
+            note:       `מצטבר · ${dateStr}`,
+            soldier,
+            items:      buildItemsFromReturns(allReturns ?? []),
+            performed_by,
+            drive_path: ['נשקיה', soldier.unit_name, 'זיכויים'],
+            filename,
+          });
+        })().catch(() => { /* error email sent by backend */ });
 
-            if (remaining && remaining.length > 0) {
-              const dateStr = new Date().toLocaleDateString('he-IL');
-              callPdfFn({
-                title:      'סיכום נשק בהחזקה',
-                note:       `עודכן לאחר זיכוי חלקי · ${dateStr}`,
-                soldier,
-                items:      (remaining as any[]).map((r) => ({
-                              name:     r.weapons_items?.name ?? '—',
-                              serial:   isQtySerial(r.serial_number) ? null : r.serial_number,
-                              quantity: 1,
-                            })),
-                performed_by,
-                drive_path: ['נשקיה', soldier.unit_name, 'החתמות'],
-                filename,
-              }).catch(() => { /* error email sent by backend */ });
-            }
-          })
-          .catch(() => { /* error email sent by backend */ });
+        // 4b. החתמות PDF — remaining holdings, or DELETE the file on full return.
+        (async () => {
+          const { data: remaining } = await supabase
+            .from('weapons_item_serials')
+            .select('serial_number, weapons_items(name)')
+            .eq('assigned_to_pn', soldier.personal_number)
+            .not('assigned_to_pn', 'is', null);
+
+          if (remaining && remaining.length > 0) {
+            await callPdfFn({
+              title:      'סיכום נשק בהחזקה',
+              note:       `עודכן לאחר זיכוי חלקי · ${dateStr}`,
+              soldier,
+              items:      (remaining as any[]).map((r) => ({
+                            name:     r.weapons_items?.name ?? '—',
+                            serial:   isQtySerial(r.serial_number) ? null : r.serial_number,
+                            quantity: 1,
+                          })),
+              performed_by,
+              drive_path: ['נשקיה', soldier.unit_name, 'החתמות'],
+              filename,
+            });
+          } else {
+            // Full return → no items left, remove the stale החתמות PDF.
+            await callDeletePdfFn({ drive_path: ['נשקיה', soldier.unit_name, 'החתמות'], filename });
+          }
+        })().catch(() => { /* error email sent by backend */ });
       }
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }

@@ -195,16 +195,33 @@ const corsHeaders = {
 const jsonRes = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
+// ── Error email (best-effort via GAS) ────────────────────────────────────────
+async function notifyError(gasUrl: string, gasSecret: string, errMsg: string): Promise<void> {
+  await fetch(gasUrl, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      secret:  gasSecret,
+      action:  'sendErrorEmail',
+      error:   errMsg,
+      context: 'generate-weapon-checkout-pdf',
+    }),
+  }).catch(() => {}); // never throw from error reporter
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+
+  // Read GAS credentials up-front so the catch block can also use them
+  const gasUrl    = Deno.env.get('GAS_PDF_URL');
+  const gasSecret = Deno.env.get('GAS_PDF_SECRET');
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const anonKey     = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const gasUrl      = Deno.env.get('GAS_PDF_URL');
-    const gasSecret   = Deno.env.get('GAS_PDF_SECRET');
     const rootFolder  = Deno.env.get('WEAPONS_CHECKOUT_DRIVE_FOLDER_ID');
 
     if (!gasUrl || !gasSecret || !rootFolder) {
@@ -249,6 +266,8 @@ serve(async (req) => {
 
   } catch (e) {
     console.error('[generate-weapon-checkout-pdf]', e);
+    // Best-effort: notify via email so failures don't go unnoticed
+    if (gasUrl && gasSecret) await notifyError(gasUrl, gasSecret, (e as Error).message);
     return jsonRes({ ok: false, error: (e as Error).message }, 500);
   }
 });

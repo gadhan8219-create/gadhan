@@ -1,8 +1,25 @@
 # CLAUDE.md — הנחיות לכל תהליך/מפתח
 
-## חובה לפני כל שינוי בקוד
+## חובה לפני כל פעולה — ללא יוצא מן הכלל
 
-**קרא את `LEARNING.md`** — מסמך הידע המלא של הפרויקט.
+> **לפני כל שינוי בקוד, הוספת פיצ'ר, תיקון באג, או מענה לשאלה טכנית:**
+
+### 1. קרא `LEARNING.md`
+```
+/Users/talinbar/Documents/gadhan-all/LEARNING.md
+```
+מכסה: ארכיטקטורה, כל הטבלאות, edge functions, זרימות PDF, design system, deploy.
+
+### 2. קרא `MEMORY.md`
+```
+/Users/talinbar/.claude/projects/-Users-talinbar-Desktop-gadhan/memory/MEMORY.md
+```
+מכסה: החלטות ידועות, gotchas, כתובות GAS, שיטות deploy, החלטות ארכיטקטורה.
+
+### למה זה חובה?
+- הפרויקט מכיל 3 מודולים עם patterns שונים
+- יש gotchas ספציפיים (SSL, Drive quota, fire-and-forget PDF)
+- ללא הקריאה — סיכון לשכפול קוד, שגיאות deploy, ושבירת patterns קיימים
 
 ---
 
@@ -22,8 +39,8 @@
 
 | מודול | תיקייה | מצב |
 |-------|---------|------|
-| קשר (radio) | `src/pages/radio/` + `src/lib/` | ✅ מלא + Supabase |
-| נשקים (weapons) | `src/pages/weapons/` | 🔲 UI בלבד — Supabase עתידי |
+| קשר (radio) | `src/pages/` + `src/lib/` | ✅ מלא + Supabase + PDF בסטורג' |
+| נשקים (weapons) | `src/pages/weapons/` | ✅ מחובר Supabase + Drive PDF |
 | דלק (delek) | `src/pages/delek/` | 🔲 UI בלבד — Supabase עתידי |
 
 ---
@@ -38,9 +55,14 @@ git commit -m "..."
 git push
 ```
 
-### פריסה
+### פריסה — Frontend
 Vercel מחובר ל-GitHub — כל push ל-main מפעיל deploy אוטומטי.
 לא צריך פקודת deploy ידנית.
+
+### פריסה — Edge Functions
+**⚠️ בעיית SSL ברשת המשתמש — לא ניתן להשתמש ב-CLI.**
+פריסה של edge functions: **Supabase Dashboard → copy-paste בלבד.**
+`supabase secrets set` עובד תקין דרך CLI.
 
 ### Supabase
 ```typescript
@@ -108,7 +130,8 @@ src/
 ├── index.css            — design tokens + Tailwind
 ├── components/
 │   ├── Layout.tsx       — sidebar + mobile header
-│   └── ProtectedRoute.tsx
+│   ├── ProtectedRoute.tsx
+│   └── SignaturePad.tsx  — shared canvas signature (forwardRef)
 ├── lib/
 │   ├── supabase.ts      — Supabase client
 │   ├── auth.tsx         — AuthContext + useAuth
@@ -116,7 +139,11 @@ src/
 ├── pages/
 │   ├── LoginPage.tsx
 │   ├── DashboardPage.tsx
-│   ├── radio/           — כל דפי הקשר (מהפרויקט המקורי)
-│   ├── weapons/         — דפי נשקים (ממוגרים מ-gadhan)
-│   └── delek/           — דפי דלק (ממוגרים מ-gadhan-delek)
+│   ├── SignFormPage.tsx  — החתמת קשר לחייל
+│   ├── weapons/         — דפי נשקים
+│   └── delek/           — דפי דלק
+supabase/
+└── functions/
+    ├── generate-signing-pdf/        — PDF קשר → Supabase Storage
+    └── generate-weapon-checkout-pdf/ — PDF נשק → Google Drive (via GAS)
 ```

@@ -1,7 +1,8 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import type { WeaponsItem } from '../../lib/database.types';
+import SignaturePad, { type SignaturePadHandle } from '../../components/SignaturePad';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,10 +27,10 @@ interface Assignment {
   assigned_at: string | null;
 }
 
-interface SelectedItem {
+interface WeaponLine {
+  itemId: string;
   serial: string;
   quantity: string;
-  preloaded?: boolean; // already held by soldier
 }
 
 interface EditForm {
@@ -136,114 +137,6 @@ function SerialPicker({
   );
 }
 
-// ── Signature Pad ─────────────────────────────────────────────────────────────
-
-interface SignaturePadHandle {
-  isEmpty: () => boolean;
-  toDataUrl: () => string; // base64 PNG, no data: prefix
-  clear: () => void;
-}
-
-const SignaturePad = forwardRef<SignaturePadHandle>((_props, ref) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const drawing   = useRef(false);
-  const drawn     = useRef(false);
-  const [empty, setEmpty] = useState(true);
-
-  function initCtx(canvas: HTMLCanvasElement) {
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = '#1e293b';
-    ctx.lineWidth   = 2.5;
-    ctx.lineCap     = 'round';
-    ctx.lineJoin    = 'round';
-  }
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas) initCtx(canvas);
-  }, []);
-
-  // Map CSS client coords → canvas pixel coords
-  function toCanvasPos(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: ((clientX - rect.left)  / rect.width)  * canvas.width,
-      y: ((clientY - rect.top)   / rect.height) * canvas.height,
-    };
-  }
-
-  function startDraw(clientX: number, clientY: number) {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const p = toCanvasPos(canvas, clientX, clientY);
-    const ctx = canvas.getContext('2d')!;
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
-    drawing.current = true;
-  }
-
-  function continueDraw(clientX: number, clientY: number) {
-    if (!drawing.current) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const p = toCanvasPos(canvas, clientX, clientY);
-    const ctx = canvas.getContext('2d')!;
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-    drawn.current = true;
-    setEmpty(false);
-  }
-
-  function stopDraw() { drawing.current = false; }
-
-  function clear() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    initCtx(canvas);
-    drawn.current = false;
-    setEmpty(true);
-  }
-
-  useImperativeHandle(ref, () => ({
-    isEmpty: () => !drawn.current,
-    toDataUrl: () => canvasRef.current?.toDataURL('image/png').split(',')[1] ?? '',
-    clear,
-  }));
-
-  return (
-    <div>
-      <canvas
-        ref={canvasRef}
-        width={600}
-        height={140}
-        className="w-full border border-slate-200 rounded-lg cursor-crosshair touch-none bg-white"
-        style={{ height: '120px' }}
-        onMouseDown={(e) => startDraw(e.clientX, e.clientY)}
-        onMouseMove={(e) => continueDraw(e.clientX, e.clientY)}
-        onMouseUp={stopDraw}
-        onMouseLeave={stopDraw}
-        onTouchStart={(e) => { e.preventDefault(); const t = e.touches[0]; startDraw(t.clientX, t.clientY); }}
-        onTouchMove={(e)  => { e.preventDefault(); const t = e.touches[0]; continueDraw(t.clientX, t.clientY); }}
-        onTouchEnd={(e)   => { e.preventDefault(); stopDraw(); }}
-      />
-      <div className="flex justify-between items-center mt-1.5">
-        <span className={`text-xs ${empty ? 'text-slate-400' : 'text-emerald-600 font-medium'}`}>
-          {empty ? 'חתום כאן...' : 'חתימה הוזנה ✓'}
-        </span>
-        {!empty && (
-          <button type="button" onClick={clear}
-            className="text-xs text-slate-400 hover:text-red-500 transition">
-            נקה
-          </button>
-        )}
-      </div>
-    </div>
-  );
-});
-SignaturePad.displayName = 'SignaturePad';
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function WeaponsCheckoutPage() {
@@ -265,7 +158,7 @@ export default function WeaponsCheckoutPage() {
   const [selectedSoldier, setSelectedSoldier] = useState<SoldierRow | null>(null);
   const [suggestions, setSuggestions] = useState<SoldierRow[]>([]);
   const [showSugg, setShowSugg] = useState(false);
-  const [, setAssignments] = useState<Assignment[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Edit soldier details
@@ -279,9 +172,8 @@ export default function WeaponsCheckoutPage() {
   const [newUnitId, setNewUnitId] = useState('');
   const [newTeamId, setNewTeamId] = useState('');
 
-  // Items
-  const [selected, setSelected] = useState<Record<string, SelectedItem>>({});
-  const [search, setSearch] = useState('');
+  // Items — lines approach
+  const [lines, setLines] = useState<WeaponLine[]>([{ itemId: '', serial: '', quantity: '1' }]);
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -336,7 +228,7 @@ export default function WeaponsCheckoutPage() {
     setSoldierSearch(val);
     setSelectedSoldier(null);
     setAssignments([]);
-    setSelected({});
+    setLines([{ itemId: '', serial: '', quantity: '1' }]);
     setEditMode(false);
     if (!val.trim()) { setSuggestions([]); setShowSugg(false); return; }
     const lower = val.toLowerCase();
@@ -354,7 +246,7 @@ export default function WeaponsCheckoutPage() {
     setEditMode(false);
     setEditForm({ phone: s.phone ?? '', unit_id: s.unit_id, team_id: s.team_id ?? '', busy: false });
 
-    // Load current assignments → pre-populate items
+    // Load current assignments → display as read-only amber card
     const { data } = await supabase
       .from('weapons_item_serials')
       .select('item_id, serial_number, assigned_at, weapons_items(name)')
@@ -370,12 +262,7 @@ export default function WeaponsCheckoutPage() {
         assigned_at: r.assigned_at,
       }));
       setAssignments(asgn);
-
-      const preloaded: Record<string, SelectedItem> = {};
-      for (const a of asgn) {
-        preloaded[a.item_id] = { serial: a.serial_number, quantity: '1', preloaded: true };
-      }
-      setSelected(preloaded);
+      setLines([{ itemId: '', serial: '', quantity: '1' }]);
     }
   }
 
@@ -402,21 +289,21 @@ export default function WeaponsCheckoutPage() {
 
   const filteredTeamsForEdit = teams.filter((t) => t.unit_id === editForm.unit_id);
   const filteredTeamsForNew  = teams.filter((t) => t.unit_id === newUnitId);
-  const filteredItems        = weaponItems.filter((i) => i.name.includes(search));
-  const newCount             = Object.values(selected).filter((s) => !s.preloaded).length;
+  const newCount             = lines.filter((l) => l.itemId).length;
 
   const activePN   = mode === 'existing' ? selectedSoldier?.personal_number ?? '' : newPN;
   const activeName = mode === 'existing' ? selectedSoldier?.full_name ?? '' : newName;
 
-  // ── Items toggle ──────────────────────────────────────────────────────────
+  // ── Line helpers ──────────────────────────────────────────────────────────
 
-  function toggle(item: WeaponsItem) {
-    setSelected((prev) => {
-      const next = { ...prev };
-      if (next[item.id]) delete next[item.id];
-      else next[item.id] = { serial: '', quantity: '1' };
-      return next;
-    });
+  function addLine() {
+    setLines((prev) => [...prev, { itemId: '', serial: '', quantity: '1' }]);
+  }
+  function removeLine(idx: number) {
+    setLines((prev) => prev.filter((_, i) => i !== idx));
+  }
+  function updateLine(idx: number, patch: Partial<WeaponLine>) {
+    setLines((prev) => prev.map((l, i) => i === idx ? { ...l, ...patch } : l));
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -429,17 +316,17 @@ export default function WeaponsCheckoutPage() {
       setError('נא למלא את כל שדות החייל'); return;
     }
 
-    const newItems = Object.entries(selected).filter(([, s]) => !s.preloaded);
-    if (newItems.length === 0) { setError('נא לבחור לפחות פריט חדש להחתמה'); return; }
+    const validLines = lines.filter((l) => l.itemId);
+    if (validLines.length === 0) { setError('נא לבחור לפחות פריט חדש להחתמה'); return; }
 
-    for (const [itemId, sel] of newItems) {
-      const item = weaponItems.find((i) => i.id === itemId);
+    for (const line of validLines) {
+      const item = weaponItems.find((i) => i.id === line.itemId);
       if (item?.has_serials) {
-        if (!sel.serial.trim()) {
+        if (!line.serial.trim()) {
           setError(`נא לבחור מספר סידורי עבור: ${item.name}`); return;
         }
         const free = availableSerials[item.id] ?? [];
-        if (!free.includes(sel.serial.trim())) {
+        if (!free.includes(line.serial.trim())) {
           setError(`מספר סידורי לא קיים ברשימה עבור: ${item.name}`); return;
         }
       }
@@ -457,26 +344,26 @@ export default function WeaponsCheckoutPage() {
 
       // 1. Save serial assignments to DB
       const dbUpdates: PromiseLike<unknown>[] = [];
-      for (const [itemId, sel] of newItems) {
-        const item = weaponItems.find((i) => i.id === itemId);
-        if (!item?.has_serials || !sel.serial.trim()) continue;
+      for (const line of validLines) {
+        const item = weaponItems.find((i) => i.id === line.itemId);
+        if (!item?.has_serials || !line.serial.trim()) continue;
         dbUpdates.push(
           supabase.from('weapons_item_serials')
             .update({ assigned_to_pn: activePN, assigned_to_name: activeName, assigned_at: now })
-            .eq('item_id', itemId)
-            .eq('serial_number', sel.serial.trim())
+            .eq('item_id', line.itemId)
+            .eq('serial_number', line.serial.trim())
             .then()
         );
       }
       await Promise.all(dbUpdates);
 
       // 2. Build items payload for PDF
-      const itemsPayload = newItems.map(([itemId, sel]) => {
-        const item = weaponItems.find((i) => i.id === itemId);
+      const itemsPayload = validLines.map((line) => {
+        const item = weaponItems.find((i) => i.id === line.itemId);
         return {
-          name:     item?.name ?? itemId,
-          serial:   item?.has_serials ? sel.serial.trim() : null,
-          quantity: item?.has_serials ? 1 : (parseInt(sel.quantity) || 1),
+          name:     item?.name ?? line.itemId,
+          serial:   item?.has_serials ? line.serial.trim() : null,
+          quantity: item?.has_serials ? 1 : (parseInt(line.quantity) || 1),
         };
       });
 
@@ -491,12 +378,14 @@ export default function WeaponsCheckoutPage() {
         ? (selectedSoldier!.phone ?? undefined)
         : newPhone || undefined;
 
-      // 4. Call edge function: generate PDF + upload to Drive
+      // 4. Show success immediately — PDF fires in background
+      setSuccess(true);
+
+      // 5. Fire PDF generation async (no await) — error email sent by backend if it fails
       const signaturePng = sigPadRef.current!.toDataUrl();
       const { data: { session } } = await supabase.auth.getSession();
-
       const fnUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-weapon-checkout-pdf`;
-      const resp = await fetch(fnUrl, {
+      fetch(fnUrl, {
         method: 'POST',
         headers: {
           'Content-Type':  'application/json',
@@ -513,13 +402,10 @@ export default function WeaponsCheckoutPage() {
           drive_path:   ['נשקיה', unitName, 'החתמות'],
           filename:     `${activeName}.pdf`,
         }),
-      });
-
-      const result = await resp.json();
-      if (!result.ok) throw new Error(result.error ?? 'שגיאה בהפקת הקובץ');
-
-      setPdfUrl(result.url as string);
-      setSuccess(true);
+      })
+        .then((r) => r.json())
+        .then((result) => { if (result.ok) setPdfUrl(result.url as string); })
+        .catch(() => { /* error email sent by backend */ });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -531,7 +417,8 @@ export default function WeaponsCheckoutPage() {
     setMode('existing');
     setSoldierSearch(''); setSelectedSoldier(null); setAssignments([]); setEditMode(false);
     setNewPN(''); setNewName(''); setNewPhone(''); setNewUnitId(''); setNewTeamId('');
-    setSelected({}); setSearch(''); setSuccess(false); setPdfUrl(null); setError(null);
+    setLines([{ itemId: '', serial: '', quantity: '1' }]);
+    setSuccess(false); setPdfUrl(null); setError(null);
     sigPadRef.current?.clear();
     loadAll();
   }
@@ -591,7 +478,7 @@ export default function WeaponsCheckoutPage() {
           <div className="flex gap-2">
             {(['existing', 'new'] as Mode[]).map((m) => (
               <button key={m} type="button"
-                onClick={() => { setMode(m); setSelected({}); setAssignments([]); setSelectedSoldier(null); setSoldierSearch(''); setEditMode(false); }}
+                onClick={() => { setMode(m); setLines([{ itemId: '', serial: '', quantity: '1' }]); setAssignments([]); setSelectedSoldier(null); setSoldierSearch(''); setEditMode(false); }}
                 className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition ${
                   mode === m ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
                 }`}>
@@ -719,115 +606,103 @@ export default function WeaponsCheckoutPage() {
         </div>
 
         {/* ── פריטים ── */}
-        <div className="card space-y-3">
+        <div className="card space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-slate-700">פריטים</h2>
-            <div className="flex gap-2">
-              {Object.values(selected).some((s) => s.preloaded) && (
-                <span className="badge bg-amber-100 text-amber-700 text-xs">
-                  {Object.values(selected).filter((s) => s.preloaded).length} בהחזקה
-                </span>
-              )}
-              {newCount > 0 && (
-                <span className="badge bg-emerald-100 text-emerald-700 text-xs">{newCount} חדשים</span>
-              )}
-            </div>
+            {newCount > 0 && (
+              <span className="badge bg-emerald-100 text-emerald-700 text-xs">{newCount} חדשים</span>
+            )}
           </div>
 
-          <input className="input" placeholder="חיפוש פריט..."
-            value={search} onChange={(e) => setSearch(e.target.value)} />
-
-          {weaponItems.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-4">טוען פריטים...</p>
-          ) : (
-            <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1">
-              {filteredItems.map((item) => {
-                const isSelected   = !!selected[item.id];
-                const isPreloaded  = selected[item.id]?.preloaded === true;
-                const free         = availableSerials[item.id] ?? [];
-                const noSerials    = item.has_serials && free.length === 0 && !isPreloaded;
-
-                return (
-                  <div key={item.id}
-                    className={`rounded-lg border transition ${
-                      isPreloaded ? 'border-amber-300 bg-amber-50' :
-                      isSelected  ? 'border-emerald-400 bg-emerald-50' :
-                      noSerials   ? 'border-slate-200 opacity-50' : 'border-slate-200'
-                    }`}>
-                    <label className={`flex items-center gap-3 p-3 ${noSerials ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                      <input
-                        type="checkbox"
-                        className="accent-emerald-600 w-4 h-4 shrink-0"
-                        checked={isSelected}
-                        disabled={noSerials}
-                        onChange={() => toggle(item)}
-                      />
-                      <span className="text-sm font-medium text-slate-800 flex-1">{item.name}</span>
-                      {isPreloaded && <span className="text-xs text-amber-600 shrink-0">בהחזקה</span>}
-                      {noSerials   && <span className="text-xs text-slate-400 shrink-0">כל הצ׳ים משויכים</span>}
-                      {!isPreloaded && item.has_serials && free.length > 0 && (
-                        <span className="text-xs text-slate-400 shrink-0">{free.length} זמינים</span>
-                      )}
-                      {!isPreloaded && !item.has_serials && item.quantity != null && (
-                        <span className="text-xs text-slate-400 shrink-0">מלאי: {item.quantity}</span>
-                      )}
-                    </label>
-
-                    {isSelected && (
-                      <div className="px-3 pb-3">
-                        {item.has_serials ? (
-                          isPreloaded ? (
-                            <>
-                              <label className="label text-xs">מספר סידורי (צ׳)</label>
-                              <input
-                                className="input text-sm font-mono bg-amber-50"
-                                dir="ltr"
-                                value={selected[item.id].serial}
-                                readOnly
-                              />
-                            </>
-                          ) : (
-                            <>
-                              <label className="label text-xs">מספר סידורי (צ׳)</label>
-                              <SerialPicker
-                                serials={free}
-                                value={selected[item.id].serial}
-                                onChange={(v) => setSelected((p) => ({ ...p, [item.id]: { ...p[item.id], serial: v } }))}
-                              />
-                            </>
-                          )
-                        ) : (
-                          <>
-                            <label className="label text-xs">
-                              כמות
-                              {item.quantity != null && <span className="text-slate-400 font-normal"> (מקסימום {item.quantity})</span>}
-                            </label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={item.quantity ?? 9999}
-                              className="input text-sm w-28"
-                              value={selected[item.id].quantity}
-                              readOnly={isPreloaded}
-                              onChange={(e) => {
-                                if (isPreloaded) return;
-                                const max = item.quantity ?? 9999;
-                                const v = Math.min(Math.max(1, parseInt(e.target.value) || 1), max);
-                                setSelected((p) => ({ ...p, [item.id]: { ...p[item.id], quantity: String(v) } }));
-                              }}
-                            />
-                          </>
-                        )}
-                      </div>
-                    )}
+          {/* Preloaded items (read-only amber card) */}
+          {assignments.length > 0 && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+              <p className="text-xs font-medium text-amber-700 mb-2">בהחזקת החייל ({assignments.length})</p>
+              <div className="space-y-1.5">
+                {assignments.map((a) => (
+                  <div key={`${a.item_id}-${a.serial_number}`} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-700">{a.item_name}</span>
+                    <span className="text-xs font-mono text-amber-700" dir="ltr">{a.serial_number}</span>
                   </div>
-                );
-              })}
-              {filteredItems.length === 0 && weaponItems.length > 0 && (
-                <p className="text-sm text-slate-400 text-center py-4">לא נמצאו פריטים</p>
-              )}
+                ))}
+              </div>
             </div>
           )}
+
+          {/* New item lines */}
+          <div className="space-y-2">
+            {lines.map((line, idx) => {
+              const item = weaponItems.find((i) => i.id === line.itemId);
+              // Items already in other lines or already assigned → exclude from dropdown
+              const usedIds = new Set([
+                ...lines.filter((_, i) => i !== idx).map((l) => l.itemId).filter(Boolean),
+                ...assignments.map((a) => a.item_id),
+              ]);
+              const availableItems = weaponItems.filter((i) => !usedIds.has(i.id));
+              const freeSerials = item ? (availableSerials[item.id] ?? []) : [];
+
+              return (
+                <div key={idx} className="flex gap-2 items-start">
+                  {/* Item dropdown */}
+                  <select
+                    className="input text-sm flex-1"
+                    value={line.itemId}
+                    onChange={(e) => updateLine(idx, { itemId: e.target.value, serial: '', quantity: '1' })}
+                  >
+                    <option value="">בחר פריט...</option>
+                    {availableItems.map((i) => (
+                      <option key={i.id} value={i.id}>{i.name}</option>
+                    ))}
+                    {/* Keep current value visible even if it somehow fell out of availableItems */}
+                    {line.itemId && !availableItems.find((i) => i.id === line.itemId) && item && (
+                      <option value={line.itemId}>{item.name}</option>
+                    )}
+                  </select>
+
+                  {/* Serial picker or quantity input */}
+                  {item?.has_serials ? (
+                    <div className="w-44 shrink-0">
+                      <SerialPicker
+                        serials={freeSerials}
+                        value={line.serial}
+                        onChange={(v) => updateLine(idx, { serial: v })}
+                      />
+                    </div>
+                  ) : item ? (
+                    <input
+                      type="number"
+                      min={1}
+                      max={item.quantity ?? 9999}
+                      className="input text-sm w-24 shrink-0"
+                      value={line.quantity}
+                      onChange={(e) => {
+                        const max = item.quantity ?? 9999;
+                        const v = Math.min(Math.max(1, parseInt(e.target.value) || 1), max);
+                        updateLine(idx, { quantity: String(v) });
+                      }}
+                    />
+                  ) : null}
+
+                  {/* Remove line button (hidden when only one empty line remains) */}
+                  {lines.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeLine(idx)}
+                      className="mt-2 text-slate-400 hover:text-red-500 transition text-xl leading-none shrink-0">
+                      ×
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={addLine}
+            className="text-sm text-emerald-700 hover:text-emerald-900 font-medium transition">
+            + הוסף פריט
+          </button>
         </div>
 
         {/* ── חתימת החייל ── */}

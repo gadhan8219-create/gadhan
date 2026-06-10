@@ -8,7 +8,7 @@ const navItems = [
 
 // ── קשר ──
 const radioItems = [
-  { to: '/sign', label: 'החתמת חייל' },
+  { to: '/sign', label: 'החתמת קשר - חיילים' },
 ];
 const radioAdminItems = [
   { to: '/unit-sign', label: 'החתמת מסגרת' },
@@ -24,7 +24,7 @@ const reportsAdminChildren = [
 
 // ── נשק ──
 const weaponsItems = [
-  { to: '/weapons/checkout', label: 'החתמת נשק' },
+  { to: '/weapons/checkout', label: 'החתמת נשק - חיילים' },
   { to: '/weapons/transfer', label: 'העברה / זיכוי' },
   { to: '/weapons/inventory', label: 'סיכום נשקייה לפי מסגרת' },
 ];

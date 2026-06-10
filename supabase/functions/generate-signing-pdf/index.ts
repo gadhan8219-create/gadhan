@@ -135,7 +135,7 @@ async function loadInventory(sb: any, soldierId: string): Promise<InventoryRow[]
 }
 
 // ───────────── PDF render ─────────────
-async function renderPdf(signing: SigningRow, inventory: InventoryRow[]): Promise<Uint8Array> {
+async function renderPdf(signing: SigningRow, inventory: InventoryRow[], signatureB64?: string): Promise<Uint8Array> {
   const fontBytes = await loadHeebo();
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
@@ -221,6 +221,21 @@ async function renderPdf(signing: SigningRow, inventory: InventoryRow[]): Promis
     page.drawLine({ start: { x: left, y: y + 4 }, end: { x: right, y: y + 4 }, thickness: 0.3, color: rgb(0.9, 0.9, 0.9) });
   }
 
+  // Signature (optional)
+  if (signatureB64) {
+    y -= 22;
+    drawRightAligned(page, 'חתימת החייל:', right, y, heebo, 11, rgb(0.3, 0.3, 0.3));
+    y -= 8;
+    const sigBytes = Uint8Array.from(atob(signatureB64), (c) => c.charCodeAt(0));
+    const sigImg   = await pdf.embedPng(sigBytes);
+    const SIG_W = 180;
+    const SIG_H = Math.round((sigImg.height / sigImg.width) * SIG_W);
+    const sigX  = right - SIG_W;
+    page.drawImage(sigImg, { x: sigX, y: y - SIG_H, width: SIG_W, height: SIG_H });
+    page.drawLine({ start: { x: sigX, y: y - SIG_H - 4 }, end: { x: right, y: y - SIG_H - 4 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
+    y -= SIG_H + 10;
+  }
+
   // Notes
   if (signing.notes) {
     y -= 14;
@@ -246,7 +261,8 @@ serve(async (req) => {
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
     const body = await req.json().catch(() => ({}));
-    const signingId = body?.signing_id as string | undefined;
+    const signingId    = body?.signing_id as string | undefined;
+    const signatureB64 = body?.signature_png_b64 as string | undefined;
     if (!signingId) return json({ ok: false, error: 'Missing signing_id' }, 400);
 
     const sb = createClient(supabaseUrl, serviceKey);
@@ -275,7 +291,7 @@ serve(async (req) => {
     const inventory = await loadInventory(sb, s.soldier.id);
 
     // 4. Render PDF
-    const pdfBytes = await renderPdf(s, inventory);
+    const pdfBytes = await renderPdf(s, inventory, signatureB64);
 
     // 5. Upload to Supabase Storage (path = <soldier_id>.pdf, overwrite on each
     //    signing — the bucket only ever holds one PDF per soldier).

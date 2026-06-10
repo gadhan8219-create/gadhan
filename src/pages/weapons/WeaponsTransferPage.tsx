@@ -213,57 +213,51 @@ export default function WeaponsTransferPage() {
         .update({ assigned_to_pn: null, assigned_to_name: null, assigned_at: null, is_zeroed: false })
         .in('id', ids);
 
-      // 2. Generate PDFs (best-effort — DB already updated)
+      // 2. Show success immediately — PDFs fire in background
+      setSuccess(`${ids.length} פריטים הוחזרו לגדוד`);
+      await loadAll();
+      resetForms();
+
+      // 3. Fire PDFs in background (no await) — error email sent by backend if they fail
       if (pdfCtx) {
-        try {
-          const { soldier, credited_items, performed_by } = pdfCtx;
-          const filename = `${soldier.full_name}.pdf`;
+        const { soldier, credited_items, performed_by } = pdfCtx;
+        const filename = `${soldier.full_name}.pdf`;
 
-          // 2a. Credit PDF
-          const creditUrl = await callPdfFn({
-            title:      'זיכוי נשק',
-            soldier,
-            items:      credited_items,
-            performed_by,
-            drive_path: ['נשקיה', soldier.unit_name, 'זיכויים'],
-            filename,
-          });
+        callPdfFn({
+          title:      'זיכוי נשק',
+          soldier,
+          items:      credited_items,
+          performed_by,
+          drive_path: ['נשקיה', soldier.unit_name, 'זיכויים'],
+          filename,
+        })
+          .then(async () => {
+            // After credit PDF: check for remaining items → update checkout PDF
+            const { data: remaining } = await supabase
+              .from('weapons_item_serials')
+              .select('serial_number, weapons_items(name)')
+              .eq('assigned_to_pn', soldier.personal_number)
+              .not('assigned_to_pn', 'is', null);
 
-          // 2b. Query remaining assignments
-          const { data: remaining } = await supabase
-            .from('weapons_item_serials')
-            .select('serial_number, weapons_items(name)')
-            .eq('assigned_to_pn', soldier.personal_number)
-            .not('assigned_to_pn', 'is', null);
-
-          if (remaining && remaining.length > 0) {
-            // Partial credit → update checkout PDF with remaining items
-            const dateStr = new Date().toLocaleDateString('he-IL');
-            await callPdfFn({
-              title:      'סיכום נשק בהחזקה',
-              note:       `עודכן לאחר זיכוי חלקי · ${dateStr}`,
-              soldier,
-              items:      (remaining as any[]).map((r) => ({
-                            name:     r.weapons_items?.name ?? '—',
-                            serial:   r.serial_number,
-                            quantity: 1,
-                          })),
-              performed_by,
-              drive_path: ['נשקיה', soldier.unit_name, 'החתמות'],
-              filename,
-            });
-          }
-
-          setSuccess(`${ids.length} פריטים הוחזרו · PDF נשמר`);
-          void creditUrl; // URL available if needed
-        } catch (pdfErr) {
-          setSuccess(`${ids.length} פריטים הוחזרו (PDF לא נוצר: ${(pdfErr as Error).message})`);
-        }
-      } else {
-        setSuccess(`${ids.length} פריטים הוחזרו לגדוד`);
+            if (remaining && remaining.length > 0) {
+              const dateStr = new Date().toLocaleDateString('he-IL');
+              callPdfFn({
+                title:      'סיכום נשק בהחזקה',
+                note:       `עודכן לאחר זיכוי חלקי · ${dateStr}`,
+                soldier,
+                items:      (remaining as any[]).map((r) => ({
+                              name:     r.weapons_items?.name ?? '—',
+                              serial:   r.serial_number,
+                              quantity: 1,
+                            })),
+                performed_by,
+                drive_path: ['נשקיה', soldier.unit_name, 'החתמות'],
+                filename,
+              }).catch(() => { /* error email sent by backend */ });
+            }
+          })
+          .catch(() => { /* error email sent by backend */ });
       }
-
-      await loadAll(); resetForms();
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }

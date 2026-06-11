@@ -249,7 +249,7 @@ export default function UnitStockReportPage() {
           rows.length === 0 ? (
             <div className="text-center text-slate-500 py-6">עדיין לא בוצעו החתמות מסגרת</div>
           ) : (
-            <div className="overflow-x-auto w-fit max-w-full mx-auto">
+            <div className="overflow-x-auto max-w-full mx-auto">
               <table className="table-base">
                 <thead>
                   <tr>
@@ -290,7 +290,7 @@ export default function UnitStockReportPage() {
           sortedInspections.length === 0 ? (
             <div className="text-center text-slate-500 py-6">אין צ׳ים מוקצים כרגע</div>
           ) : (
-            <div className="overflow-x-auto w-fit max-w-full mx-auto">
+            <div className="overflow-x-auto max-w-full mx-auto">
               <table className="table-base">
                 <thead>
                   <tr>

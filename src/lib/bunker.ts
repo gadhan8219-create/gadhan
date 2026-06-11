@@ -30,6 +30,15 @@ export interface BunkerCredit {
   credited_at: string;
 }
 
+export interface BunkerTransfer {
+  id: string;
+  origin_warehouse_id: string;
+  destination_warehouse_id: string;
+  in_charge: string;
+  items: ReceiptItem[];
+  transferred_at: string;
+}
+
 // Fixed bunker unit roster (kept separate from the org-wide `units` table).
 export const BUNKER_UNITS = [
   'פלוגה א׳', 'פלוגה ב׳', 'פלוגה ג׳', 'מחסר', 'צמה', 'מפג״ד', 'ניוד', 'תאגד',
@@ -172,4 +181,31 @@ export async function recentCredits(unit: string, limit = 5): Promise<BunkerCred
     .limit(limit);
   if (error) throw error;
   return (data ?? []) as BunkerCredit[];
+}
+
+// ── Transfer ────────────────────────────────────────────────────────────────
+export async function applyTransfer(
+  originId: string,
+  destinationId: string,
+  inCharge: string,
+  items: ReceiptItem[],
+): Promise<void> {
+  const { error } = await supabase.rpc('bunker_apply_transfer', {
+    p_origin: originId,
+    p_destination: destinationId,
+    p_in_charge: inCharge,
+    p_items: items,
+  });
+  if (error) throw error;
+}
+
+export async function recentTransfers(originId: string, limit = 5): Promise<BunkerTransfer[]> {
+  const { data, error } = await supabase
+    .from('bunker_transfers')
+    .select('*')
+    .eq('origin_warehouse_id', originId)
+    .order('transferred_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as BunkerTransfer[];
 }

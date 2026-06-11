@@ -5,11 +5,11 @@ import { useAuth } from '../lib/auth';
 interface NavLeaf { to: string; label: string; end?: boolean; admin?: boolean }
 interface NavSection { id: string; label: string; items: NavLeaf[]; admin?: boolean }
 
-const HOME: NavLeaf = { to: '/', label: '🏠 בית', end: true };
+const HOME: NavLeaf = { to: '/', label: 'בית', end: true };
 
 const SECTIONS: NavSection[] = [
   {
-    id: 'radio', label: '📡 קשר', items: [
+    id: 'radio', label: 'קשר', items: [
       { to: '/sign', label: 'החתמת קשר - חיילים' },
       { to: '/unit-sign', label: 'החתמת מסגרת', admin: true },
       { to: '/items', label: 'ניהול פריטי קשר', admin: true },
@@ -19,7 +19,7 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
-    id: 'weapons', label: '🔫 נשק', items: [
+    id: 'weapons', label: 'נשק', items: [
       { to: '/weapons/checkout', label: 'החתמת נשק - חיילים' },
       { to: '/weapons/transfer', label: 'העברה / זיכוי' },
       { to: '/weapons/inventory', label: 'סיכום נשקייה' },
@@ -27,21 +27,21 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
-    id: 'delek', label: '⛽ דלק', items: [
+    id: 'delek', label: 'דלק', items: [
       { to: '/delek', label: 'תדלוק', end: true },
       { to: '/delek/admin', label: 'ניהול כרטיסי דלק', admin: true },
     ],
   },
   {
-    id: 'bunker', label: '🏗️ בונקר', items: [
-      { to: '/bunker/inventory', label: '📦 מלאי' },
-      { to: '/bunker/receive', label: '📥 קבלות' },
-      { to: '/bunker/dispense', label: '⬇️ ניפוק' },
-      { to: '/bunker/credit', label: '⬆️ זיכוי' },
-      { to: '/bunker/transfer', label: '🔄 העברה' },
-      { to: '/bunker/regulate', label: '⚖️ וויסותים' },
-      { to: '/bunker/shatsal', label: '🔴 שצ״ל' },
-      { to: '/bunker/summary', label: '📊 סיכום' },
+    id: 'bunker', label: 'בונקר', items: [
+      { to: '/bunker/inventory', label: 'מלאי' },
+      { to: '/bunker/receive', label: 'קבלות' },
+      { to: '/bunker/dispense', label: 'ניפוק' },
+      { to: '/bunker/credit', label: 'זיכוי' },
+      { to: '/bunker/transfer', label: 'העברה' },
+      { to: '/bunker/regulate', label: 'וויסותים' },
+      { to: '/bunker/shatsal', label: 'שצ״ל' },
+      { to: '/bunker/summary', label: 'סיכום' },
     ],
   },
   {

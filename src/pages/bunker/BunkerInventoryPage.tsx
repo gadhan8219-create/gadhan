@@ -6,6 +6,15 @@ import {
   type BunkerWarehouse, type BunkerItem, type BunkerStockRow,
 } from '../../lib/bunker';
 
+// Per-warehouse column accent colours (cycled).
+const COL_ACCENTS = [
+  'text-emerald-700 bg-emerald-50/40',
+  'text-sky-700 bg-sky-50/40',
+  'text-violet-700 bg-violet-50/40',
+  'text-rose-700 bg-rose-50/40',
+  'text-teal-700 bg-teal-50/40',
+];
+
 export default function BunkerInventoryPage() {
   const [warehouses, setWarehouses] = useState<BunkerWarehouse[]>([]);
   const [items, setItems] = useState<BunkerItem[]>([]);
@@ -16,15 +25,12 @@ export default function BunkerInventoryPage() {
   const [tab, setTab] = useState<'create' | 'delete'>('create');
   const [newName, setNewName] = useState('');
   const [delId, setDelId] = useState('');
-
-  const [viewId, setViewId] = useState('');
   const [search, setSearch] = useState('');
 
   async function reload() {
     try {
       const [w, i, s] = await Promise.all([listWarehouses(), listItems(), listStock()]);
       setWarehouses(w); setItems(i); setStock(s);
-      if (!viewId && w.length) setViewId(w[0].id);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -36,13 +42,22 @@ export default function BunkerInventoryPage() {
     return (id: string) => m.get(id) ?? '—';
   }, [items]);
 
+  // Pivot: item → { warehouseId → quantity }.
   const rows = useMemo(() => {
-    return stock
-      .filter((s) => s.warehouse_id === viewId && s.quantity > 0)
-      .map((s) => ({ key: s.item_id, name: itemName(s.item_id), quantity: s.quantity }))
+    const byItem = new Map<string, Map<string, number>>();
+    for (const s of stock) {
+      if (!byItem.has(s.item_id)) byItem.set(s.item_id, new Map());
+      byItem.get(s.item_id)!.set(s.warehouse_id, s.quantity);
+    }
+    return Array.from(byItem.entries())
+      .map(([itemId, perWh]) => {
+        const total = Array.from(perWh.values()).reduce((a, b) => a + b, 0);
+        return { itemId, name: itemName(itemId), perWh, total };
+      })
+      .filter((r) => r.total > 0)
       .filter((r) => !search || r.name.includes(search))
       .sort((a, b) => a.name.localeCompare(b.name, 'he'));
-  }, [stock, viewId, search, itemName]);
+  }, [stock, itemName, search]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -75,7 +90,6 @@ export default function BunkerInventoryPage() {
       if (!confirm(`למחוק את מחסן "${wh?.name}"?`)) return;
       await deleteWarehouse(delId);
       setDelId('');
-      if (viewId === delId) setViewId('');
       await reload();
     } catch (e) {
       setError((e as Error).message);
@@ -86,7 +100,7 @@ export default function BunkerInventoryPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="📦" title="מלאי בונקר" subtitle="מלאי תחמושת זמין לפי מחסן" />
+      <PageTitle icon="📦" title="מלאי בונקר" subtitle="מלאי תחמושת זמין בכל המחסנים" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -133,16 +147,9 @@ export default function BunkerInventoryPage() {
         <p className="text-xs text-slate-400">לא ניתן למחוק מחסן שמשויכת אליו תחמושת.</p>
       </div>
 
-      {/* Stock table */}
+      {/* Stock table — all warehouses as columns */}
       <div className="card space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex-1 min-w-[200px]">
-            <label className="label">מחסן</label>
-            <select className="input" value={viewId} onChange={(e) => setViewId(e.target.value)}>
-              <option value="">— בחר מחסן —</option>
-              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </div>
           <input className="input max-w-xs" placeholder="🔍 סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
           <span className="badge bg-emerald-50 text-emerald-700">{rows.length} פריטים</span>
         </div>
@@ -150,21 +157,34 @@ export default function BunkerInventoryPage() {
           <table className="table-base">
             <thead>
               <tr>
-                <th>פריט</th>
-                <th className="text-center text-emerald-700">כמות זמינה</th>
+                <th className="text-right">פריט</th>
+                {warehouses.map((w, i) => (
+                  <th key={w.id} className={`text-center ${COL_ACCENTS[i % COL_ACCENTS.length].split(' ')[0]}`}>{w.name}</th>
+                ))}
+                <th className="text-center text-amber-700">סה״כ</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.key}>
-                  <td className="font-medium">{r.name}</td>
-                  <td className="text-center font-bold text-emerald-700 bg-emerald-50/40">{r.quantity.toLocaleString('he-IL')}</td>
+                <tr key={r.itemId}>
+                  <td className="font-medium text-right">{r.name}</td>
+                  {warehouses.map((w, i) => {
+                    const q = r.perWh.get(w.id) ?? 0;
+                    return (
+                      <td key={w.id} className={`text-center font-bold ${COL_ACCENTS[i % COL_ACCENTS.length]}`}>
+                        {q > 0 ? q.toLocaleString('he-IL') : <span className="text-slate-300">—</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="text-center font-bold text-amber-700 bg-amber-50/40">{r.total.toLocaleString('he-IL')}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={2} className="text-center text-slate-400 py-8 text-sm">
-                  {viewId ? 'אין מלאי במחסן זה' : 'בחר מחסן להצגת המלאי'}
-                </td></tr>
+                <tr>
+                  <td colSpan={warehouses.length + 2} className="text-center text-slate-400 py-8 text-sm">
+                    {warehouses.length === 0 ? 'אין מחסנים — צור מחסן ראשון למעלה' : 'אין מלאי להצגה'}
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>

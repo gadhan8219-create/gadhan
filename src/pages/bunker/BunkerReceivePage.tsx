@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { ItemsGrid, PageTitle } from './shared';
+import { HistoryControls, ItemsGrid, PageTitle } from './shared';
 import {
   listWarehouses, listItems, createItem, applyReceipt, recentReceipts,
   type BunkerWarehouse, type BunkerItem, type BunkerReceipt, type ReceiptItem,
@@ -20,6 +20,7 @@ export default function BunkerReceivePage() {
   const [search, setSearch] = useState('');
   const [values, setValues] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
+  const [limit, setLimit] = useState(5);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,8 +31,8 @@ export default function BunkerReceivePage() {
 
   useEffect(() => {
     if (!warehouseId) { setReceipts([]); return; }
-    recentReceipts(warehouseId).then(setReceipts).catch((e) => setError((e as Error).message));
-  }, [warehouseId]);
+    recentReceipts(warehouseId, limit).then(setReceipts).catch((e) => setError((e as Error).message));
+  }, [warehouseId, limit]);
 
   const gridItems = useMemo(
     () => items.map((i) => ({ key: i.id, label: i.name }))
@@ -69,7 +70,7 @@ export default function BunkerReceivePage() {
       await applyReceipt(warehouseId, receiver.trim(), source.trim(), picked);
       setValues({});
       setSearch('');
-      const fresh = await recentReceipts(warehouseId);
+      const fresh = await recentReceipts(warehouseId, limit);
       setReceipts(fresh);
     } catch (e) {
       setError((e as Error).message);
@@ -152,6 +153,7 @@ export default function BunkerReceivePage() {
       {warehouseId && (
         <div className="card space-y-3">
           <h2 className="font-bold text-slate-800">📋 קבלות אחרונות</h2>
+          <HistoryControls limit={limit} onLimitChange={setLimit} count={receipts.length} label="קבלות" />
           <div className="table-wrap card p-0 overflow-x-auto">
             <table className="table-base">
               <thead>

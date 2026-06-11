@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { LiveItemsGrid, PageTitle, type LiveItem } from './shared';
+import { HistoryControls, LiveItemsGrid, PageTitle, type LiveItem } from './shared';
 import {
   listWarehouses, listItems, listStock, applyTransfer, recentTransfers,
   type BunkerWarehouse, type BunkerItem, type BunkerStockRow, type BunkerTransfer, type ReceiptItem,
@@ -143,6 +143,7 @@ export default function BunkerTransferPage() {
       {originId && (
         <div className="card space-y-3">
           <h2 className="font-bold text-slate-800">📋 העברות אחרונות — {whName(originId)}</h2>
+          <HistoryControls limit={limit} onLimitChange={setLimit} count={transfers.length} label="העברות" />
           <div className="table-wrap card p-0 overflow-x-auto">
             <table className="table-base">
               <thead>
@@ -184,11 +185,6 @@ export default function BunkerTransferPage() {
               </tbody>
             </table>
           </div>
-          {transfers.length >= limit && (
-            <div className="flex justify-center">
-              <button type="button" onClick={() => setLimit((n) => n + 5)} className="btn-secondary">הצג עוד</button>
-            </div>
-          )}
         </div>
       )}
     </div>

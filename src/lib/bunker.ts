@@ -55,6 +55,15 @@ export interface BunkerSummaryRow {
   remaining: number;
 }
 
+export interface BunkerRegulation {
+  id: string;
+  warehouse_id: string;
+  target: string;
+  performer: string;
+  items: ReceiptItem[];
+  regulated_at: string;
+}
+
 // Fixed bunker unit roster (kept separate from the org-wide `units` table).
 export const BUNKER_UNITS = [
   'פלוגה א׳', 'פלוגה ב׳', 'פלוגה ג׳', 'מחסר', 'צמה', 'מפג״ד', 'ניוד', 'תאגד',
@@ -259,4 +268,31 @@ export async function getSummary(unit?: string): Promise<BunkerSummaryRow[]> {
   const { data, error } = await supabase.rpc('bunker_summary', { p_unit: unit ?? null });
   if (error) throw error;
   return (data ?? []) as BunkerSummaryRow[];
+}
+
+// ── Regulations (ammo leaving the unit to external parties) ───────────────────
+export async function applyRegulation(
+  warehouseId: string,
+  target: string,
+  performer: string,
+  items: ReceiptItem[],
+): Promise<void> {
+  const { error } = await supabase.rpc('bunker_apply_regulation', {
+    p_warehouse: warehouseId,
+    p_target: target,
+    p_performer: performer,
+    p_items: items,
+  });
+  if (error) throw error;
+}
+
+export async function recentRegulations(warehouseId: string, limit = 5): Promise<BunkerRegulation[]> {
+  const { data, error } = await supabase
+    .from('bunker_regulations')
+    .select('*')
+    .eq('warehouse_id', warehouseId)
+    .order('regulated_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as BunkerRegulation[];
 }

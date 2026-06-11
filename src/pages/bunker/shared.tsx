@@ -106,6 +106,40 @@ export function LiveItemsGrid({ items, values, onChange, cap, accent = 'emerald'
   );
 }
 
+// History page-size controls: a "how many to display" selector plus a
+// "show more" button. Shared by every bunker log screen (dispense, credit,
+// transfer, shatsal, receive, regulate).
+const HISTORY_SIZES = [5, 10, 20, 50, 100];
+
+interface HistoryControlsProps {
+  limit: number;
+  onLimitChange: (n: number) => void;
+  count: number;
+  label?: string;
+}
+
+export function HistoryControls({ limit, onLimitChange, count, label = 'פעולות' }: HistoryControlsProps) {
+  return (
+    <div className="flex items-center justify-between flex-wrap gap-2">
+      <label className="flex items-center gap-2 text-sm text-slate-500">
+        כמות {label} להצגה:
+        <select
+          className="input !w-auto !py-1 !px-2"
+          value={limit}
+          onChange={(e) => onLimitChange(Number(e.target.value))}
+        >
+          {HISTORY_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </label>
+      {count >= limit && (
+        <button type="button" onClick={() => onLimitChange(limit + 5)} className="btn-secondary">
+          הצג עוד
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface ItemsGridProps {
   items: BunkerItem[];
   values: Record<string, number>;

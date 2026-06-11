@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { LiveItemsGrid, PageTitle, type LiveItem } from './shared';
+import { HistoryControls, LiveItemsGrid, PageTitle, type LiveItem } from './shared';
 import {
   listWarehouses, listItems, listUnitStock, applyCredit, recentCredits,
   BUNKER_UNITS,
@@ -133,6 +133,7 @@ export default function BunkerCreditPage() {
       {unit && (
         <div className="card space-y-3">
           <h2 className="font-bold text-slate-800">📜 זיכויים אחרונים — {unit}</h2>
+          <HistoryControls limit={limit} onLimitChange={setLimit} count={credits.length} label="זיכויים" />
           <div className="table-wrap card p-0 overflow-x-auto">
             <table className="table-base">
               <thead>
@@ -173,11 +174,6 @@ export default function BunkerCreditPage() {
               </tbody>
             </table>
           </div>
-          {credits.length >= limit && (
-            <div className="flex justify-center">
-              <button type="button" onClick={() => setLimit((n) => n + 5)} className="btn-secondary">הצג עוד</button>
-            </div>
-          )}
         </div>
       )}
     </div>

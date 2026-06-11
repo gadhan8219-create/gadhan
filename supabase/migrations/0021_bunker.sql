@@ -85,6 +85,10 @@ alter table bunker_stock      enable row level security;
 alter table bunker_receipts   enable row level security;
 
 -- Bunker management is available to any logged-in user (no admin gate in the UI).
+drop policy if exists bunker_warehouses_all on bunker_warehouses;
+drop policy if exists bunker_items_all      on bunker_items;
+drop policy if exists bunker_stock_all      on bunker_stock;
+drop policy if exists bunker_receipts_all   on bunker_receipts;
 create policy bunker_warehouses_all on bunker_warehouses for all to authenticated using (true) with check (true);
 create policy bunker_items_all      on bunker_items      for all to authenticated using (true) with check (true);
 create policy bunker_stock_all      on bunker_stock      for all to authenticated using (true) with check (true);

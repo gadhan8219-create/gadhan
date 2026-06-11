@@ -130,6 +130,9 @@ alter table bunker_unit_stock enable row level security;
 alter table bunker_dispenses  enable row level security;
 alter table bunker_credits    enable row level security;
 
+drop policy if exists bunker_unit_stock_all on bunker_unit_stock;
+drop policy if exists bunker_dispenses_all  on bunker_dispenses;
+drop policy if exists bunker_credits_all    on bunker_credits;
 create policy bunker_unit_stock_all on bunker_unit_stock for all to authenticated using (true) with check (true);
 create policy bunker_dispenses_all  on bunker_dispenses  for all to authenticated using (true) with check (true);
 create policy bunker_credits_all    on bunker_credits    for all to authenticated using (true) with check (true);

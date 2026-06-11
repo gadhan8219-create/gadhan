@@ -39,6 +39,22 @@ export interface BunkerTransfer {
   transferred_at: string;
 }
 
+export interface BunkerShatsal {
+  id: string;
+  unit: string;
+  reporter: string;
+  used_on: string;
+  items: ReceiptItem[];
+  created_at: string;
+}
+export interface BunkerSummaryRow {
+  item_id: string;
+  item_name: string;
+  total_ammo: number;
+  total_shatsal: number;
+  remaining: number;
+}
+
 // Fixed bunker unit roster (kept separate from the org-wide `units` table).
 export const BUNKER_UNITS = [
   'פלוגה א׳', 'פלוגה ב׳', 'פלוגה ג׳', 'מחסר', 'צמה', 'מפג״ד', 'ניוד', 'תאגד',
@@ -208,4 +224,39 @@ export async function recentTransfers(originId: string, limit = 5): Promise<Bunk
     .limit(limit);
   if (error) throw error;
   return (data ?? []) as BunkerTransfer[];
+}
+
+// ── Shatsal (combat use) ────────────────────────────────────────────────────
+export async function applyShatsal(
+  unit: string,
+  reporter: string,
+  usedOn: string,
+  items: ReceiptItem[],
+): Promise<void> {
+  const { error } = await supabase.rpc('bunker_apply_shatsal', {
+    p_unit: unit,
+    p_reporter: reporter,
+    p_used_on: usedOn,
+    p_items: items,
+  });
+  if (error) throw error;
+}
+
+export async function recentShatsal(unit: string, limit = 5): Promise<BunkerShatsal[]> {
+  const { data, error } = await supabase
+    .from('bunker_shatsal')
+    .select('*')
+    .eq('unit', unit)
+    .order('used_on', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as BunkerShatsal[];
+}
+
+// ── Summary ─────────────────────────────────────────────────────────────────
+export async function getSummary(unit?: string): Promise<BunkerSummaryRow[]> {
+  const { data, error } = await supabase.rpc('bunker_summary', { p_unit: unit ?? null });
+  if (error) throw error;
+  return (data ?? []) as BunkerSummaryRow[];
 }

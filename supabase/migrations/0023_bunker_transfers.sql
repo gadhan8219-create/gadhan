@@ -62,6 +62,7 @@ $$;
 
 -- ── RLS ──────────────────────────────────────────────────────────────────────
 alter table bunker_transfers enable row level security;
+drop policy if exists bunker_transfers_all on bunker_transfers;
 create policy bunker_transfers_all on bunker_transfers for all to authenticated using (true) with check (true);
 
 -- ── Grants ───────────────────────────────────────────────────────────────────

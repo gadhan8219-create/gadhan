@@ -32,6 +32,9 @@ import BunkerTransferPage from './pages/bunker/BunkerTransferPage';
 import BunkerRegulatePage from './pages/bunker/BunkerRegulatePage';
 import BunkerShatsalPage from './pages/bunker/BunkerShatsalPage';
 import BunkerSummaryPage from './pages/bunker/BunkerSummaryPage';
+// Personnel pages (שלישות)
+import AttendanceReportPage from './pages/personnel/AttendanceReportPage';
+import AttendanceRecordsPage from './pages/personnel/AttendanceRecordsPage';
 
 export default function App() {
   return (
@@ -73,6 +76,10 @@ export default function App() {
         <Route path="bunker/regulate" element={<BunkerRegulatePage />} />
         <Route path="bunker/shatsal" element={<BunkerShatsalPage />} />
         <Route path="bunker/summary" element={<BunkerSummaryPage />} />
+
+        {/* ── שלישות (Personnel) ── */}
+        <Route path="personnel/attendance" element={<AttendanceReportPage />} />
+        <Route path="personnel/records" element={<AttendanceRecordsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

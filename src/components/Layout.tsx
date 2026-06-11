@@ -45,6 +45,12 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
+    id: 'personnel', label: 'שלישות', items: [
+      { to: '/personnel/attendance', label: 'דיווח נוכחות (דוח 1)' },
+      { to: '/personnel/records', label: 'דוחות' },
+    ],
+  },
+  {
     id: 'admin', label: '⚙️ ניהול מערכת', admin: true, items: [
       { to: '/soldiers-import', label: 'ייבוא חיילים' },
       { to: '/soldiers', label: 'רשימת חיילים' },

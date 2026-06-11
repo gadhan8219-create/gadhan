@@ -60,7 +60,7 @@ export default function BunkerSummaryPage() {
           </button>
         </div>
 
-        <div className="card p-0 overflow-x-auto w-fit max-w-full mx-auto">
+        <div className="card p-0 overflow-x-auto max-w-full mx-auto">
           <table className="table-base">
             <thead>
               <tr>

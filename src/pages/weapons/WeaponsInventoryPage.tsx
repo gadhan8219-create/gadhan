@@ -343,8 +343,8 @@ export default function WeaponsInventoryPage() {
           {loading ? (
             <div className="text-center text-slate-400 py-12">טוען נתונים...</div>
           ) : (
-            <div className="table-wrap card p-0 overflow-x-auto">
-              <table className="table-base !w-auto mx-auto">
+            <div className="card p-0 overflow-x-auto w-fit max-w-full mx-auto">
+              <table className="table-base">
                 <thead>
                   <tr>
                     <th>פריט</th>
@@ -428,8 +428,8 @@ export default function WeaponsInventoryPage() {
           {loading ? (
             <div className="text-center text-slate-400 py-12">טוען נתונים...</div>
           ) : (
-            <div className="table-wrap card p-0 overflow-x-auto">
-              <table className="table-base !w-auto mx-auto">
+            <div className="card p-0 overflow-x-auto w-fit max-w-full mx-auto">
+              <table className="table-base">
                 <thead>
                   <tr>
                     <th>מסגרת</th>

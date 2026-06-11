@@ -153,8 +153,8 @@ export default function BunkerInventoryPage() {
           <input className="input max-w-xs" placeholder="🔍 סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
           <span className="badge bg-emerald-50 text-emerald-700">{rows.length} פריטים</span>
         </div>
-        <div className="table-wrap card p-0 overflow-x-auto">
-          <table className="table-base !w-auto mx-auto">
+        <div className="card p-0 overflow-x-auto w-fit max-w-full mx-auto">
+          <table className="table-base">
             <thead>
               <tr>
                 <th className="text-right">פריט</th>

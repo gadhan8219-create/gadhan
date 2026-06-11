@@ -23,6 +23,15 @@ import WeaponsItemsPage from './pages/weapons/WeaponsItemsPage';
 // Delek pages
 import DelekPage from './pages/delek/DelekPage';
 import DelekAdminPage from './pages/delek/DelekAdminPage';
+// Bunker pages
+import BunkerInventoryPage from './pages/bunker/BunkerInventoryPage';
+import BunkerReceivePage from './pages/bunker/BunkerReceivePage';
+import BunkerDispensePage from './pages/bunker/BunkerDispensePage';
+import BunkerCreditPage from './pages/bunker/BunkerCreditPage';
+import BunkerTransferPage from './pages/bunker/BunkerTransferPage';
+import BunkerRegulatePage from './pages/bunker/BunkerRegulatePage';
+import BunkerShatsalPage from './pages/bunker/BunkerShatsalPage';
+import BunkerSummaryPage from './pages/bunker/BunkerSummaryPage';
 
 export default function App() {
   return (
@@ -54,6 +63,16 @@ export default function App() {
         {/* ── דלק (Delek) ── */}
         <Route path="delek" element={<DelekPage />} />
         <Route path="delek/admin" element={<ProtectedRoute requireAdmin><DelekAdminPage /></ProtectedRoute>} />
+
+        {/* ── בונקר (Bunker) ── */}
+        <Route path="bunker/inventory" element={<BunkerInventoryPage />} />
+        <Route path="bunker/receive" element={<BunkerReceivePage />} />
+        <Route path="bunker/dispense" element={<BunkerDispensePage />} />
+        <Route path="bunker/credit" element={<BunkerCreditPage />} />
+        <Route path="bunker/transfer" element={<BunkerTransferPage />} />
+        <Route path="bunker/regulate" element={<BunkerRegulatePage />} />
+        <Route path="bunker/shatsal" element={<BunkerShatsalPage />} />
+        <Route path="bunker/summary" element={<BunkerSummaryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

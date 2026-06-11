@@ -2,55 +2,70 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 
-const navItems = [
-  { to: '/', label: 'בית', end: true },
-];
+interface NavLeaf { to: string; label: string; end?: boolean; admin?: boolean }
+interface NavSection { id: string; label: string; items: NavLeaf[]; admin?: boolean }
 
-// ── קשר ──
-const radioItems = [
-  { to: '/sign', label: 'החתמת קשר - חיילים' },
-];
-const radioAdminItems = [
-  { to: '/unit-sign', label: 'החתמת מסגרת' },
-  { to: '/items', label: 'ניהול פריטי קשר' },
-];
-const reportsChildren = [
-  { to: '/reports', label: 'ייצוא דוחות' },
-  { to: '/unit-stock', label: 'דוח מלאי / בדיקות' },
-];
-const reportsAdminChildren = [
-  { to: '/unit-signings', label: 'החתמות מסגרת' },
-];
+const HOME: NavLeaf = { to: '/', label: '🏠 בית', end: true };
 
-// ── נשק ──
-const weaponsItems = [
-  { to: '/weapons/checkout', label: 'החתמת נשק - חיילים' },
-  { to: '/weapons/transfer', label: 'העברה / זיכוי' },
-  { to: '/weapons/inventory', label: 'סיכום נשקייה לפי מסגרת' },
-];
-const weaponsAdminItems = [
-  { to: '/weapons/armory', label: 'ניהול פריטי נשקיה' },
-];
-
-// ── דלק ──
-const delekItems = [
-  { to: '/delek', label: 'תדלוק' },
-];
-const delekAdminItems = [
-  { to: '/delek/admin', label: 'ניהול כרטיסי דלק' },
-];
-
-// ── ניהול מערכת ──
-const adminItems = [
-  { to: '/soldiers-import', label: 'ייבוא חיילים' },
-  { to: '/soldiers', label: 'רשימת חיילים' },
-  { to: '/users', label: 'ניהול משתמשים' },
+const SECTIONS: NavSection[] = [
+  {
+    id: 'radio', label: '📡 קשר', items: [
+      { to: '/sign', label: 'החתמת קשר - חיילים' },
+      { to: '/unit-sign', label: 'החתמת מסגרת', admin: true },
+      { to: '/items', label: 'ניהול פריטי קשר', admin: true },
+      { to: '/reports', label: 'ייצוא דוחות' },
+      { to: '/unit-stock', label: 'דוח מלאי / בדיקות' },
+      { to: '/unit-signings', label: 'החתמות מסגרת', admin: true },
+    ],
+  },
+  {
+    id: 'weapons', label: '🔫 נשק', items: [
+      { to: '/weapons/checkout', label: 'החתמת נשק - חיילים' },
+      { to: '/weapons/transfer', label: 'העברה / זיכוי' },
+      { to: '/weapons/inventory', label: 'סיכום נשקייה' },
+      { to: '/weapons/armory', label: 'ניהול פריטי נשקיה', admin: true },
+    ],
+  },
+  {
+    id: 'delek', label: '⛽ דלק', items: [
+      { to: '/delek', label: 'תדלוק', end: true },
+      { to: '/delek/admin', label: 'ניהול כרטיסי דלק', admin: true },
+    ],
+  },
+  {
+    id: 'bunker', label: '🏗️ בונקר', items: [
+      { to: '/bunker/inventory', label: '📦 מלאי' },
+      { to: '/bunker/receive', label: '📥 קבלות' },
+      { to: '/bunker/dispense', label: '⬇️ ניפוק' },
+      { to: '/bunker/credit', label: '⬆️ זיכוי' },
+      { to: '/bunker/transfer', label: '🔄 העברה' },
+      { to: '/bunker/regulate', label: '⚖️ וויסותים' },
+      { to: '/bunker/shatsal', label: '🔴 שצ״ל' },
+      { to: '/bunker/summary', label: '📊 סיכום' },
+    ],
+  },
+  {
+    id: 'admin', label: '⚙️ ניהול מערכת', admin: true, items: [
+      { to: '/soldiers-import', label: 'ייבוא חיילים' },
+      { to: '/soldiers', label: 'רשימת חיילים' },
+      { to: '/users', label: 'ניהול משתמשים' },
+    ],
+  },
 ];
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
-  return `block rounded-lg px-3 py-2 text-sm transition ${
-    isActive ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800'
+  return `block rounded-lg px-3 py-1.5 text-sm transition ${
+    isActive ? 'bg-emerald-700 text-white' : 'text-slate-300 hover:bg-slate-800'
   }`;
+}
+
+function sectionOf(path: string): string | null {
+  for (const s of SECTIONS) {
+    if (s.items.some((i) => (i.end ? path === i.to : path === i.to || path.startsWith(i.to + '/') || path.startsWith(i.to)))) {
+      return s.id;
+    }
+  }
+  return null;
 }
 
 export default function Layout() {
@@ -58,12 +73,18 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = profile?.role === 'admin';
-  const allReportsChildren = [...reportsChildren, ...(isAdmin ? reportsAdminChildren : [])];
-  const reportsActive = allReportsChildren.some((c) => location.pathname.startsWith(c.to));
-  const [reportsOpen, setReportsOpen] = useState(reportsActive);
+
+  const [open, setOpen] = useState<string | null>(() => sectionOf(location.pathname));
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
+  // Keep the section containing the active route expanded as the user navigates.
+  useEffect(() => {
+    const active = sectionOf(location.pathname);
+    if (active) setOpen(active);
+    setDrawerOpen(false);
+  }, [location.pathname]);
+
+  const sections = SECTIONS.filter((s) => !s.admin || isAdmin);
 
   return (
     <div className="min-h-screen md:flex">
@@ -104,69 +125,42 @@ export default function Layout() {
             className="md:hidden text-slate-400 hover:text-white text-2xl leading-none px-2">×</button>
         </div>
 
-        <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
-          {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>{item.label}</NavLink>
-          ))}
-
-          {/* ── קשר ── */}
-          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">קשר</div>
-          {radioItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
-          ))}
-          {isAdmin && radioAdminItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
-          ))}
-          <div>
-            <button type="button" onClick={() => setReportsOpen((v) => !v)}
-              className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition ${
-                reportsActive ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800'
+        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
+          {/* Home */}
+          <NavLink to={HOME.to} end={HOME.end}
+            className={({ isActive }) =>
+              `block rounded-lg px-3 py-2 text-sm font-medium transition ${
+                isActive ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800'
               }`}>
-              <span>דוחות קשר</span>
-              <span className="text-xs">{reportsOpen ? '▾' : '◂'}</span>
-            </button>
-            {reportsOpen && (
-              <div className="mt-1 mr-3 space-y-0.5">
-                {allReportsChildren.map((c) => (
-                  <NavLink key={c.to} to={c.to}
-                    className={({ isActive }) =>
-                      `block rounded-lg px-3 py-1.5 text-xs transition ${
-                        isActive ? 'bg-emerald-700 text-white' : 'text-slate-300 hover:bg-slate-800'
-                      }`}>
-                    {c.label}
-                  </NavLink>
-                ))}
+            {HOME.label}
+          </NavLink>
+
+          {/* Accordion sections */}
+          {sections.map((section) => {
+            const items = section.items.filter((i) => !i.admin || isAdmin);
+            if (items.length === 0) return null;
+            const isOpen = open === section.id;
+            const active = section.id === sectionOf(location.pathname);
+            return (
+              <div key={section.id}>
+                <button type="button"
+                  onClick={() => setOpen((o) => (o === section.id ? null : section.id))}
+                  className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                    active ? 'text-emerald-400' : 'text-slate-200 hover:bg-slate-800'
+                  }`}>
+                  <span>{section.label}</span>
+                  <span className="text-xs">{isOpen ? '▾' : '◂'}</span>
+                </button>
+                {isOpen && (
+                  <div className="mt-1 mr-2 space-y-0.5">
+                    {items.map((i) => (
+                      <NavLink key={i.to} to={i.to} end={i.end} className={navLinkClass}>{i.label}</NavLink>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-
-          {/* ── נשק ── */}
-          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">נשק</div>
-          {weaponsItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
-          ))}
-          {isAdmin && weaponsAdminItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
-          ))}
-
-          {/* ── דלק ── */}
-          <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">דלק</div>
-          {delekItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
-          ))}
-          {isAdmin && delekAdminItems.map((item) => (
-            <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
-          ))}
-
-          {/* ── ניהול מערכת ── */}
-          {isAdmin && (
-            <>
-              <div className="pt-3 mt-2 border-t border-slate-800 text-xs text-slate-500 px-3 pb-1">⚙️ ניהול מערכת</div>
-              {adminItems.map((item) => (
-                <NavLink key={item.to} to={item.to} className={navLinkClass}>{item.label}</NavLink>
-              ))}
-            </>
-          )}
+            );
+          })}
         </nav>
 
         <div className="px-4 py-4 border-t border-slate-800 text-sm">

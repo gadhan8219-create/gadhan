@@ -15,11 +15,12 @@ interface EditModal {
   name: string;
   description: string;
   quantity: string;
+  noCheckRequired: boolean;
   busy: boolean;
   error: string | null;
 }
 
-const EMPTY_FORM = { name: '', description: '', hasSerials: true, serials: '', quantity: '' };
+const EMPTY_FORM = { name: '', description: '', hasSerials: true, serials: '', quantity: '', noCheckRequired: false };
 
 function parseSerials(text: string): string[] {
   return [...new Set(
@@ -84,6 +85,7 @@ export default function WeaponsItemsPage() {
       description: form.description.trim() || null,
       has_serials: form.hasSerials,
       quantity: form.hasSerials ? null : (parseInt(form.quantity) || 0),
+      no_check_required: form.noCheckRequired,
     }).select().single();
 
     if (error) { alert(error.message); return; }
@@ -167,7 +169,7 @@ export default function WeaponsItemsPage() {
   }
 
   function openEdit(item: WeaponsItem) {
-    setEditModal({ item, name: item.name, description: item.description ?? '', quantity: item.quantity?.toString() ?? '', busy: false, error: null });
+    setEditModal({ item, name: item.name, description: item.description ?? '', quantity: item.quantity?.toString() ?? '', noCheckRequired: item.no_check_required, busy: false, error: null });
   }
 
   async function handleSaveEdit() {
@@ -178,6 +180,7 @@ export default function WeaponsItemsPage() {
     const { error } = await supabase.from('weapons_items').update({
       name,
       description: editModal.description.trim() || null,
+      no_check_required: editModal.noCheckRequired,
       ...(!editModal.item.has_serials ? { quantity: parseInt(editModal.quantity) || 0 } : {}),
     }).eq('id', editModal.item.id);
     if (error) { setEditModal({ ...editModal, busy: false, error: error.message }); return; }
@@ -215,6 +218,19 @@ export default function WeaponsItemsPage() {
           <span className="text-xs text-slate-400">
             {form.hasSerials ? 'כל יחידה תיוצג בנפרד עם מספר סידורי' : 'מעקב לפי כמות כוללת'}
           </span>
+        </div>
+
+        <div className="flex items-center gap-3 py-1">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.noCheckRequired}
+              onChange={(e) => setForm({ ...form, noCheckRequired: e.target.checked })}
+              className="w-4 h-4 accent-emerald-600"
+            />
+            <span className="text-sm font-medium text-slate-700">פריט לא דורש בדיקה</span>
+          </label>
+          <span className="text-xs text-slate-400">פטור מבדיקת נשק/אופטיקה וירוק בעיניים</span>
         </div>
 
         {form.hasSerials ? (
@@ -317,6 +333,16 @@ export default function WeaponsItemsPage() {
                   <input type="number" min={0} className="input" value={editModal.quantity} onChange={(e) => setEditModal({ ...editModal, quantity: e.target.value })} disabled={editModal.busy} />
                 </div>
               )}
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={editModal.noCheckRequired}
+                  onChange={(e) => setEditModal({ ...editModal, noCheckRequired: e.target.checked })}
+                  disabled={editModal.busy}
+                  className="w-4 h-4 accent-emerald-600"
+                />
+                <span className="text-sm font-medium text-slate-700">פריט לא דורש בדיקה</span>
+              </label>
               {editModal.error && <p className="text-sm text-red-700">{editModal.error}</p>}
             </div>
             <div className="flex justify-end gap-2 mt-5">

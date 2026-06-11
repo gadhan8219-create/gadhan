@@ -250,10 +250,10 @@ export default function UnitStockReportPage() {
             <div className="text-center text-slate-500 py-6">עדיין לא בוצעו החתמות מסגרת</div>
           ) : (
             <div className="table-wrap">
-              <table className="table-base">
+              <table className="table-base !w-auto mx-auto">
                 <thead>
                   <tr>
-                    <th className="w-full">פריט</th>
+                    <th>פריט</th>
                     {unitsInReport.map((u) => (
                       <th key={u.id} className="text-center">{u.name}</th>
                     ))}
@@ -262,7 +262,7 @@ export default function UnitStockReportPage() {
                 <tbody>
                   {itemsInReport.map((it) => (
                     <tr key={it.id}>
-                      <td className="font-medium whitespace-nowrap w-full">{it.name}</td>
+                      <td className="font-medium whitespace-nowrap">{it.name}</td>
                       {unitsInReport.map((u) => {
                         const cell = matrix.get(`${u.id}::${it.id}`);
                         if (!cell || cell.allocated === 0) {
@@ -291,13 +291,13 @@ export default function UnitStockReportPage() {
             <div className="text-center text-slate-500 py-6">אין צ׳ים מוקצים כרגע</div>
           ) : (
             <div className="table-wrap">
-              <table className="table-base">
+              <table className="table-base !w-auto mx-auto">
                 <thead>
                   <tr>
                     <th>מסגרת</th>
                     <th>פריט</th>
                     <th>צ׳</th>
-                    <th className="w-full">חייל</th>
+                    <th>חייל</th>
                     <th className="text-center">סטטוס</th>
                     <th>נבדק לאחרונה</th>
                     <th className="w-24"></th>
@@ -320,7 +320,7 @@ export default function UnitStockReportPage() {
                             <td>{r.unitName}</td>
                             <td>{r.itemName}</td>
                             <td className="font-mono text-xs" dir="ltr">{r.serialNumber}</td>
-                            <td className="text-sm w-full whitespace-nowrap">
+                            <td className="text-sm whitespace-nowrap">
                               {r.soldierName ? (
                                 <span>
                                   {r.soldierName}

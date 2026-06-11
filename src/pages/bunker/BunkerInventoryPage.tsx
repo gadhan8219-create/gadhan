@@ -154,10 +154,10 @@ export default function BunkerInventoryPage() {
           <span className="badge bg-emerald-50 text-emerald-700">{rows.length} פריטים</span>
         </div>
         <div className="table-wrap card p-0 overflow-x-auto">
-          <table className="table-base">
+          <table className="table-base !w-auto mx-auto">
             <thead>
               <tr>
-                <th className="text-right w-full">פריט</th>
+                <th className="text-right">פריט</th>
                 {warehouses.map((w, i) => (
                   <th key={w.id} className={`text-center ${COL_ACCENTS[i % COL_ACCENTS.length].split(' ')[0]}`}>{w.name}</th>
                 ))}
@@ -167,7 +167,7 @@ export default function BunkerInventoryPage() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.itemId}>
-                  <td className="font-medium text-right w-full whitespace-nowrap">{r.name}</td>
+                  <td className="font-medium text-right whitespace-nowrap">{r.name}</td>
                   {warehouses.map((w, i) => {
                     const q = r.perWh.get(w.id) ?? 0;
                     return (

@@ -344,7 +344,7 @@ export default function WeaponsInventoryPage() {
             <div className="text-center text-slate-400 py-12">טוען נתונים...</div>
           ) : (
             <div className="table-wrap card p-0 overflow-x-auto">
-              <table className="table-base">
+              <table className="table-base !w-auto mx-auto">
                 <thead>
                   <tr>
                     <th>פריט</th>
@@ -429,13 +429,13 @@ export default function WeaponsInventoryPage() {
             <div className="text-center text-slate-400 py-12">טוען נתונים...</div>
           ) : (
             <div className="table-wrap card p-0 overflow-x-auto">
-              <table className="table-base">
+              <table className="table-base !w-auto mx-auto">
                 <thead>
                   <tr>
                     <th>מסגרת</th>
                     <th>פריט</th>
                     <th>צ׳</th>
-                    <th className="w-full">שם החייל</th>
+                    <th>שם החייל</th>
                     <th className="text-center">בדיקת נשק/אופטיקה</th>
                     <th className="text-center">ירוק בעיניים</th>
                     {isAdmin && <th className="text-center">פטור בדיקה</th>}
@@ -447,7 +447,7 @@ export default function WeaponsInventoryPage() {
                       <td className="text-sm text-slate-600">{r.unitName}</td>
                       <td className="font-medium">{r.itemName}</td>
                       <td className="font-mono" dir="ltr">{r.serial_number}</td>
-                      <td className="w-full whitespace-nowrap">{r.assigned_to_name ?? r.assigned_to_pn}</td>
+                      <td className="whitespace-nowrap">{r.assigned_to_name ?? r.assigned_to_pn}</td>
                       <td className="text-center"><CheckCell r={r} field="weapon" /></td>
                       <td className="text-center"><CheckCell r={r} field="green" /></td>
                       {isAdmin && (

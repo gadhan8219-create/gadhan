@@ -435,7 +435,7 @@ export default function WeaponsInventoryPage() {
                     <th>מסגרת</th>
                     <th>פריט</th>
                     <th>צ׳</th>
-                    <th>שם החייל</th>
+                    <th className="w-full">שם החייל</th>
                     <th className="text-center">בדיקת נשק/אופטיקה</th>
                     <th className="text-center">ירוק בעיניים</th>
                     {isAdmin && <th className="text-center">פטור בדיקה</th>}
@@ -447,7 +447,7 @@ export default function WeaponsInventoryPage() {
                       <td className="text-sm text-slate-600">{r.unitName}</td>
                       <td className="font-medium">{r.itemName}</td>
                       <td className="font-mono" dir="ltr">{r.serial_number}</td>
-                      <td>{r.assigned_to_name ?? r.assigned_to_pn}</td>
+                      <td className="w-full whitespace-nowrap">{r.assigned_to_name ?? r.assigned_to_pn}</td>
                       <td className="text-center"><CheckCell r={r} field="weapon" /></td>
                       <td className="text-center"><CheckCell r={r} field="green" /></td>
                       {isAdmin && (

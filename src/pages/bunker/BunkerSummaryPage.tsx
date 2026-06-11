@@ -64,7 +64,7 @@ export default function BunkerSummaryPage() {
           <table className="table-base">
             <thead>
               <tr>
-                <th>פריט</th>
+                <th className="w-full">פריט</th>
                 <th className="text-center text-emerald-700">סה״כ תחמושת</th>
                 <th className="text-center text-red-700">סה״כ שצ״ל</th>
                 <th className="text-center text-amber-700">נשאר</th>
@@ -73,7 +73,7 @@ export default function BunkerSummaryPage() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.item_id}>
-                  <td className="font-medium">{r.item_name}</td>
+                  <td className="font-medium w-full whitespace-nowrap">{r.item_name}</td>
                   <td className="text-center font-bold text-emerald-700 bg-emerald-50/40">{num(r.total_ammo)}</td>
                   <td className="text-center font-bold text-red-700 bg-red-50/40">{num(r.total_shatsal)}</td>
                   <td className={`text-center font-bold bg-amber-50/40 ${r.remaining < 0 ? 'text-red-600' : 'text-amber-700'}`}>

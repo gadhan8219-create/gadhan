@@ -253,7 +253,7 @@ export default function UnitStockReportPage() {
               <table className="table-base">
                 <thead>
                   <tr>
-                    <th>פריט</th>
+                    <th className="w-full">פריט</th>
                     {unitsInReport.map((u) => (
                       <th key={u.id} className="text-center">{u.name}</th>
                     ))}
@@ -262,7 +262,7 @@ export default function UnitStockReportPage() {
                 <tbody>
                   {itemsInReport.map((it) => (
                     <tr key={it.id}>
-                      <td className="font-medium whitespace-nowrap">{it.name}</td>
+                      <td className="font-medium whitespace-nowrap w-full">{it.name}</td>
                       {unitsInReport.map((u) => {
                         const cell = matrix.get(`${u.id}::${it.id}`);
                         if (!cell || cell.allocated === 0) {
@@ -297,7 +297,7 @@ export default function UnitStockReportPage() {
                     <th>מסגרת</th>
                     <th>פריט</th>
                     <th>צ׳</th>
-                    <th>חייל</th>
+                    <th className="w-full">חייל</th>
                     <th className="text-center">סטטוס</th>
                     <th>נבדק לאחרונה</th>
                     <th className="w-24"></th>
@@ -320,7 +320,7 @@ export default function UnitStockReportPage() {
                             <td>{r.unitName}</td>
                             <td>{r.itemName}</td>
                             <td className="font-mono text-xs" dir="ltr">{r.serialNumber}</td>
-                            <td className="text-sm">
+                            <td className="text-sm w-full whitespace-nowrap">
                               {r.soldierName ? (
                                 <span>
                                   {r.soldierName}

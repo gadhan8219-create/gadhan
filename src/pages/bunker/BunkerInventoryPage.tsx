@@ -157,7 +157,7 @@ export default function BunkerInventoryPage() {
           <table className="table-base">
             <thead>
               <tr>
-                <th className="text-right">פריט</th>
+                <th className="text-right w-full">פריט</th>
                 {warehouses.map((w, i) => (
                   <th key={w.id} className={`text-center ${COL_ACCENTS[i % COL_ACCENTS.length].split(' ')[0]}`}>{w.name}</th>
                 ))}
@@ -167,7 +167,7 @@ export default function BunkerInventoryPage() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.itemId}>
-                  <td className="font-medium text-right">{r.name}</td>
+                  <td className="font-medium text-right w-full whitespace-nowrap">{r.name}</td>
                   {warehouses.map((w, i) => {
                     const q = r.perWh.get(w.id) ?? 0;
                     return (

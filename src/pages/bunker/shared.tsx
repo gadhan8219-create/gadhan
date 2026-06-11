@@ -60,6 +60,52 @@ export function UiOnlyNote() {
   );
 }
 
+// Live stock-aware grid backed by real items. Shows the available quantity and
+// (when `cap`) limits the entered amount to it. Used by dispense (capped) and
+// credit (uncapped — over-return is allowed).
+export interface LiveItem { id: string; name: string; available: number }
+
+interface LiveItemsGridProps {
+  items: LiveItem[];
+  values: Record<string, number>;
+  onChange: (id: string, val: number) => void;
+  cap?: boolean;
+  accent?: 'emerald' | 'red';
+}
+
+export function LiveItemsGrid({ items, values, onChange, cap, accent = 'emerald' }: LiveItemsGridProps) {
+  const accentText = accent === 'red' ? 'text-red-600' : 'text-emerald-600';
+  if (items.length === 0) {
+    return <p className="text-slate-400 text-sm text-center py-6">אין פריטים זמינים</p>;
+  }
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      {items.map((it) => (
+        <div key={it.id} className="rounded-xl border border-slate-200 bg-white p-3 flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-slate-700">{it.name}</span>
+          <span className="text-xs text-slate-400">
+            זמין: <b className={it.available > 0 ? 'text-emerald-600' : 'text-slate-400'}>{it.available.toLocaleString('he-IL')}</b>
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={cap ? it.available : undefined}
+            value={values[it.id] ?? ''}
+            onChange={(e) => {
+              let v = parseInt(e.target.value) || 0;
+              if (v < 0) v = 0;
+              if (cap && v > it.available) v = it.available;
+              onChange(it.id, v);
+            }}
+            placeholder="0"
+            className={`input text-center font-bold ${accentText}`}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface ItemsGridProps {
   items: BunkerItem[];
   values: Record<string, number>;

@@ -1,19 +1,93 @@
-import { useState } from 'react';
-import { DEMO_ITEMS, PageTitle, UiOnlyNote, UNITS, WAREHOUSES } from './shared';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { LiveItemsGrid, PageTitle, type LiveItem } from './shared';
+import {
+  listWarehouses, listItems, listUnitStock, applyCredit, recentCredits,
+  BUNKER_UNITS,
+  type BunkerWarehouse, type BunkerItem, type BunkerUnitStockRow, type BunkerCredit, type ReceiptItem,
+} from '../../lib/bunker';
 
 export default function BunkerCreditPage() {
-  const [unit, setUnit] = useState('');
-  const [warehouse, setWarehouse] = useState('');
-  const [by, setBy] = useState('');
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [warehouses, setWarehouses] = useState<BunkerWarehouse[]>([]);
+  const [items, setItems] = useState<BunkerItem[]>([]);
+  const [unitStock, setUnitStock] = useState<BunkerUnitStockRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  // Demo: pretend the first few items are currently dispensed to the unit.
-  const dispensed = DEMO_ITEMS.slice(0, 4).map((it, i) => ({ ...it, net: (i + 1) * 25 }));
+  const [unit, setUnit] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+  const [receiver, setReceiver] = useState('');
+  const [search, setSearch] = useState('');
+  const [values, setValues] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
+
+  const [credits, setCredits] = useState<BunkerCredit[]>([]);
+  const [limit, setLimit] = useState(5);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([listWarehouses(), listItems()])
+      .then(([w, i]) => { setWarehouses(w); setItems(i); })
+      .catch((e) => setError((e as Error).message));
+  }, []);
+
+  useEffect(() => {
+    if (!unit) { setUnitStock([]); setCredits([]); return; }
+    setValues({});
+    listUnitStock(unit).then(setUnitStock).catch((e) => setError((e as Error).message));
+  }, [unit]);
+
+  useEffect(() => {
+    if (!unit) return;
+    recentCredits(unit, limit).then(setCredits).catch((e) => setError((e as Error).message));
+  }, [unit, limit]);
+
+  const itemName = useMemo(() => {
+    const m = new Map(items.map((i) => [i.id, i.name]));
+    return (id: string) => m.get(id) ?? '—';
+  }, [items]);
+
+  const gridItems: LiveItem[] = useMemo(
+    () => unitStock
+      .filter((s) => s.quantity > 0)
+      .map((s) => ({ id: s.item_id, name: itemName(s.item_id), available: s.quantity }))
+      .filter((g) => !search || g.name.includes(search))
+      .sort((a, b) => a.name.localeCompare(b.name, 'he')),
+    [unitStock, itemName, search],
+  );
+
+  const ready = unit && warehouseId && receiver.trim();
+
+  async function handleCredit() {
+    setError(null);
+    const picked: ReceiptItem[] = Object.entries(values)
+      .filter(([, q]) => q > 0)
+      .map(([id, q]) => ({ item_id: id, name: itemName(id), quantity: q }));
+    if (picked.length === 0) { setError('יש להזין כמות לפריט אחד לפחות'); return; }
+    setSaving(true);
+    try {
+      await applyCredit(unit, warehouseId, receiver.trim(), picked);
+      setValues({});
+      setSearch('');
+      const [s, c] = await Promise.all([listUnitStock(unit), recentCredits(unit, limit)]);
+      setUnitStock(s); setCredits(c);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const fmt = (s: string) => new Date(s).toLocaleString('he-IL');
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="⬆️" title="זיכוי לפי מסגרת" />
-      <UiOnlyNote />
+      <PageTitle icon="⬆️" title="זיכוי תחמושת" subtitle="החזרת תחמושת ממסגרת למחסן" />
+
+      {error && (
+        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
+          {error}
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-800 ml-2">×</button>
+        </div>
+      )}
 
       <div className="card space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -21,69 +95,89 @@ export default function BunkerCreditPage() {
             <label className="label">מסגרת</label>
             <select className="input" value={unit} onChange={(e) => setUnit(e.target.value)}>
               <option value="">— בחר מסגרת —</option>
-              {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              {BUNKER_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
           <div>
-            <label className="label">מחסן להחזרה</label>
-            <select className="input" value={warehouse} onChange={(e) => setWarehouse(e.target.value)}>
-              <option value="">— לפי מחסן מקורי —</option>
-              {WAREHOUSES.map((w) => <option key={w.value} value={w.value}>{w.value}</option>)}
+            <label className="label">מחסן מזכה</label>
+            <select className="input" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
+              <option value="">— בחר מחסן —</option>
+              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="label">שם מלא</label>
-            <input className="input" value={by} onChange={(e) => setBy(e.target.value)} placeholder="שם המזכה..." />
+            <label className="label">שם המקבל</label>
+            <input className="input" value={receiver} onChange={(e) => setReceiver(e.target.value)} placeholder="שם מלא..." />
           </div>
         </div>
 
-        {unit ? (
-          <>
-            <p className="text-slate-500 text-sm">בחר פריטים להחזרה:</p>
-            <div className="space-y-2">
-              {dispensed.map((r) => (
-                <label key={r.key} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 accent-red-600"
-                    checked={!!checked[r.key]}
-                    onChange={(e) => setChecked((p) => ({ ...p, [r.key]: e.target.checked }))}
-                  />
-                  <span className="flex-1 font-medium text-slate-700">{r.label}</span>
-                  <span className="text-sm text-slate-500">נטו: <b className="text-amber-600">{r.net}</b></span>
-                  <input
-                    type="number"
-                    min={1}
-                    defaultValue={r.net}
-                    disabled={!checked[r.key]}
-                    className="input w-20 text-center font-bold disabled:opacity-40"
-                  />
-                </label>
-              ))}
-            </div>
+        {ready ? (
+          <div className="space-y-3 border-t border-slate-200 pt-4">
+            <p className="text-slate-500 text-sm">ניתן להחזיר יותר מהכמות הזמינה.</p>
+            <input className="input max-w-xs" placeholder="🔍 סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <LiveItemsGrid items={gridItems} values={values} accent="red"
+              onChange={(id, v) => setValues((p) => ({ ...p, [id]: v }))} />
             <div className="flex justify-center">
-              <button type="button" className="btn-primary min-w-[200px] !bg-red-600 hover:!bg-red-700">↩️ בצע זיכוי</button>
+              <button type="button" disabled={saving} onClick={handleCredit}
+                className="btn-primary min-w-[200px] !bg-red-600 hover:!bg-red-700">
+                {saving ? 'מזכה…' : '↩️ בצע זיכוי'}
+              </button>
             </div>
-          </>
+          </div>
         ) : (
-          <p className="text-slate-400 text-center py-8 text-sm">יש לבחור מסגרת כדי לראות ניפוקים פעילים</p>
+          <p className="text-slate-400 text-center py-8 text-sm">יש לבחור מסגרת, מחסן ומקבל כדי להמשיך</p>
         )}
       </div>
 
       {/* History */}
       {unit && (
         <div className="card space-y-3">
-          <h2 className="font-bold text-slate-800">📜 היסטוריית זיכויים</h2>
+          <h2 className="font-bold text-slate-800">📜 זיכויים אחרונים — {unit}</h2>
           <div className="table-wrap card p-0 overflow-x-auto">
             <table className="table-base">
               <thead>
-                <tr><th>תאריך</th><th>פריט</th><th>כמות</th><th>מחסן</th><th>מזכה</th></tr>
+                <tr><th>תאריך</th><th>מחסן</th><th>מקבל</th><th>פריטים</th></tr>
               </thead>
               <tbody>
-                <tr><td colSpan={5} className="text-center text-slate-400 py-8 text-sm">אין זיכויים להצגה</td></tr>
+                {credits.length === 0 && (
+                  <tr><td colSpan={4} className="text-center text-slate-400 py-8 text-sm">אין זיכויים להצגה</td></tr>
+                )}
+                {credits.map((c) => (
+                  <Fragment key={c.id}>
+                    <tr>
+                      <td className="text-xs text-slate-500">{fmt(c.credited_at)}</td>
+                      <td>{warehouses.find((w) => w.id === c.warehouse_id)?.name ?? '—'}</td>
+                      <td>{c.receiver}</td>
+                      <td>
+                        <button type="button" onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+                          className="text-blue-600 hover:text-blue-800 text-sm">
+                          {expanded === c.id ? 'הסתר' : `הצג (${c.items.length})`}
+                        </button>
+                      </td>
+                    </tr>
+                    {expanded === c.id && (
+                      <tr>
+                        <td colSpan={4} className="bg-slate-50">
+                          <div className="flex flex-wrap gap-2 py-1">
+                            {c.items.map((it, idx) => (
+                              <span key={idx} className="badge bg-red-50 text-red-700">
+                                {it.name}: {it.quantity.toLocaleString('he-IL')}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
               </tbody>
             </table>
           </div>
+          {credits.length >= limit && (
+            <div className="flex justify-center">
+              <button type="button" onClick={() => setLimit((n) => n + 5)} className="btn-secondary">הצג עוד</button>
+            </div>
+          )}
         </div>
       )}
     </div>

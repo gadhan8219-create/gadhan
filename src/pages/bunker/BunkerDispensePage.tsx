@@ -1,81 +1,188 @@
-import { useState } from 'react';
-import { DEMO_ITEMS, ItemsGrid, PageTitle, UiOnlyNote, UNITS, WAREHOUSES, stockFor } from './shared';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { LiveItemsGrid, PageTitle, type LiveItem } from './shared';
+import {
+  listWarehouses, listItems, listStock, applyDispense, recentDispenses,
+  BUNKER_UNITS,
+  type BunkerWarehouse, type BunkerItem, type BunkerStockRow, type BunkerDispense, type ReceiptItem,
+} from '../../lib/bunker';
 
 export default function BunkerDispensePage() {
-  const [warehouse, setWarehouse] = useState('');
+  const [warehouses, setWarehouses] = useState<BunkerWarehouse[]>([]);
+  const [items, setItems] = useState<BunkerItem[]>([]);
+  const [stock, setStock] = useState<BunkerStockRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const [warehouseId, setWarehouseId] = useState('');
   const [unit, setUnit] = useState('');
-  const [by, setBy] = useState('');
+  const [person, setPerson] = useState('');
   const [search, setSearch] = useState('');
   const [values, setValues] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
 
-  const items = DEMO_ITEMS.filter((i) => !search || i.label.includes(search));
+  const [dispenses, setDispenses] = useState<BunkerDispense[]>([]);
+  const [limit, setLimit] = useState(5);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([listWarehouses(), listItems()])
+      .then(([w, i]) => { setWarehouses(w); setItems(i); })
+      .catch((e) => setError((e as Error).message));
+  }, []);
+
+  useEffect(() => {
+    if (!warehouseId) { setStock([]); return; }
+    setValues({});
+    listStock(warehouseId).then(setStock).catch((e) => setError((e as Error).message));
+  }, [warehouseId]);
+
+  useEffect(() => {
+    if (!unit) { setDispenses([]); return; }
+    recentDispenses(unit, limit).then(setDispenses).catch((e) => setError((e as Error).message));
+  }, [unit, limit]);
+
+  const itemName = useMemo(() => {
+    const m = new Map(items.map((i) => [i.id, i.name]));
+    return (id: string) => m.get(id) ?? '—';
+  }, [items]);
+
+  const available = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of stock) m.set(s.item_id, s.quantity);
+    return m;
+  }, [stock]);
+
+  const gridItems: LiveItem[] = useMemo(
+    () => items
+      .map((i) => ({ id: i.id, name: i.name, available: available.get(i.id) ?? 0 }))
+      .filter((g) => g.available > 0)
+      .filter((g) => !search || g.name.includes(search)),
+    [items, available, search],
+  );
+
+  const ready = warehouseId && unit && person.trim();
+
+  async function handleDispense() {
+    setError(null);
+    const picked: ReceiptItem[] = Object.entries(values)
+      .filter(([, q]) => q > 0)
+      .map(([id, q]) => ({ item_id: id, name: itemName(id), quantity: q }));
+    if (picked.length === 0) { setError('יש להזין כמות לפריט אחד לפחות'); return; }
+    setSaving(true);
+    try {
+      await applyDispense(warehouseId, unit, person.trim(), picked);
+      setValues({});
+      setSearch('');
+      const [s, d] = await Promise.all([listStock(warehouseId), recentDispenses(unit, limit)]);
+      setStock(s); setDispenses(d);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const fmt = (s: string) => new Date(s).toLocaleString('he-IL');
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="⬇️" title="ניפוק לפי מסגרת" />
-      <UiOnlyNote />
+      <PageTitle icon="⬇️" title="ניפוק תחמושת" subtitle="ניפוק ממחסן למסגרת" />
+
+      {error && (
+        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
+          {error}
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-800 ml-2">×</button>
+        </div>
+      )}
 
       <div className="card space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="label">מחסן</label>
-            <select className="input" value={warehouse} onChange={(e) => setWarehouse(e.target.value)}>
+            <select className="input" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
               <option value="">— בחר מחסן —</option>
-              {WAREHOUSES.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
+              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
           <div>
             <label className="label">מסגרת</label>
             <select className="input" value={unit} onChange={(e) => setUnit(e.target.value)}>
               <option value="">— בחר מסגרת —</option>
-              {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              {BUNKER_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
           <div>
-            <label className="label">שם מלא</label>
-            <input className="input" value={by} onChange={(e) => setBy(e.target.value)} placeholder="שם המנפק..." />
+            <label className="label">שם המנפק</label>
+            <input className="input" value={person} onChange={(e) => setPerson(e.target.value)} placeholder="שם מלא..." />
           </div>
         </div>
 
-        {unit ? (
-          <>
+        {ready ? (
+          <div className="space-y-3 border-t border-slate-200 pt-4">
             <input className="input max-w-xs" placeholder="🔍 סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
-            <ItemsGrid
-              items={items}
-              values={values}
-              onChange={(k, v) => setValues((p) => ({ ...p, [k]: v }))}
-              stockOf={(it) => stockFor(it, warehouse)}
-            />
+            <LiveItemsGrid items={gridItems} values={values} cap
+              onChange={(id, v) => setValues((p) => ({ ...p, [id]: v }))} />
             <div className="flex justify-center">
-              <button type="button" className="btn-primary min-w-[200px]">✅ בצע ניפוק</button>
+              <button type="button" disabled={saving} onClick={handleDispense} className="btn-primary min-w-[200px]">
+                {saving ? 'מנפק…' : '✅ בצע ניפוק'}
+              </button>
             </div>
-          </>
+          </div>
         ) : (
-          <p className="text-slate-400 text-center py-8 text-sm">יש לבחור מסגרת כדי להמשיך</p>
+          <p className="text-slate-400 text-center py-8 text-sm">יש לבחור מחסן, מסגרת ומנפק כדי להמשיך</p>
         )}
       </div>
 
       {/* History */}
-      <div className="card space-y-3">
-        <h2 className="font-bold text-slate-800">📋 היסטוריית ניפוקים</h2>
-        <div className="flex flex-wrap gap-3">
-          <select className="input max-w-[180px]">
-            <option value="">כל המסגרות</option>
-            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
-          <input type="date" className="input max-w-[180px]" />
+      {unit && (
+        <div className="card space-y-3">
+          <h2 className="font-bold text-slate-800">📋 ניפוקים אחרונים — {unit}</h2>
+          <div className="table-wrap card p-0 overflow-x-auto">
+            <table className="table-base">
+              <thead>
+                <tr><th>תאריך</th><th>מחסן</th><th>מנפק</th><th>פריטים</th></tr>
+              </thead>
+              <tbody>
+                {dispenses.length === 0 && (
+                  <tr><td colSpan={4} className="text-center text-slate-400 py-8 text-sm">אין ניפוקים להצגה</td></tr>
+                )}
+                {dispenses.map((d) => (
+                  <Fragment key={d.id}>
+                    <tr>
+                      <td className="text-xs text-slate-500">{fmt(d.dispensed_at)}</td>
+                      <td>{warehouses.find((w) => w.id === d.warehouse_id)?.name ?? '—'}</td>
+                      <td>{d.person}</td>
+                      <td>
+                        <button type="button" onClick={() => setExpanded(expanded === d.id ? null : d.id)}
+                          className="text-blue-600 hover:text-blue-800 text-sm">
+                          {expanded === d.id ? 'הסתר' : `הצג (${d.items.length})`}
+                        </button>
+                      </td>
+                    </tr>
+                    {expanded === d.id && (
+                      <tr>
+                        <td colSpan={4} className="bg-slate-50">
+                          <div className="flex flex-wrap gap-2 py-1">
+                            {d.items.map((it, idx) => (
+                              <span key={idx} className="badge bg-emerald-50 text-emerald-700">
+                                {it.name}: {it.quantity.toLocaleString('he-IL')}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {dispenses.length >= limit && (
+            <div className="flex justify-center">
+              <button type="button" onClick={() => setLimit((n) => n + 5)} className="btn-secondary">הצג עוד</button>
+            </div>
+          )}
         </div>
-        <div className="table-wrap card p-0 overflow-x-auto">
-          <table className="table-base">
-            <thead>
-              <tr><th>תאריך</th><th>מסגרת</th><th>פריט</th><th>כמות</th><th>מנפק</th></tr>
-            </thead>
-            <tbody>
-              <tr><td colSpan={5} className="text-center text-slate-400 py-8 text-sm">אין ניפוקים להצגה</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

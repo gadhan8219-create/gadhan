@@ -29,6 +29,8 @@ export default function AttendanceReportPage() {
   const [unitFilter, setUnitFilter] = useState('');
   const [date, setDate] = useState(todayISO());
   const [values, setValues] = useState<Record<string, string>>({}); // soldier_id → status_id
+  const [activeStatusId, setActiveStatusId] = useState(''); // status currently being assigned
+  const [hasExisting, setHasExisting] = useState(false); // date already had a report
 
   const [newStatus, setNewStatus] = useState('');
   const [addingStatus, setAddingStatus] = useState(false);
@@ -71,6 +73,7 @@ export default function AttendanceReportPage() {
         const prefill: Record<string, string> = {};
         for (const a of att) if (ids.has(a.soldier_id)) prefill[a.soldier_id] = a.status_id;
         setValues(prefill);
+        setHasExisting(Object.keys(prefill).length > 0);
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
@@ -95,8 +98,44 @@ export default function AttendanceReportPage() {
       .sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }, [soldiers, teamName]);
 
+  const statusName = useMemo(() => {
+    const m = new Map(statuses.map((s) => [s.id, s.status]));
+    return (id: string | undefined) => (id ? m.get(id) ?? '—' : '');
+  }, [statuses]);
+
+  // How many soldiers are currently assigned to each status.
+  const countByStatus = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of soldiers) {
+      const v = values[s.id];
+      if (v) m.set(v, (m.get(v) ?? 0) + 1);
+    }
+    return m;
+  }, [soldiers, values]);
+
   const reportedCount = soldiers.filter((s) => values[s.id]).length;
   const allReported = soldiers.length > 0 && reportedCount === soldiers.length;
+
+  // Toggle a soldier under the active status (re-click removes the assignment).
+  function toggleSoldier(soldierId: string) {
+    if (!activeStatusId) return;
+    setValues((p) => {
+      const next = { ...p };
+      if (next[soldierId] === activeStatusId) delete next[soldierId];
+      else next[soldierId] = activeStatusId;
+      return next;
+    });
+  }
+
+  // Assign the active status to everyone not yet marked.
+  function applyToRemaining() {
+    if (!activeStatusId) return;
+    setValues((p) => {
+      const next = { ...p };
+      for (const s of soldiers) if (!next[s.id]) next[s.id] = activeStatusId;
+      return next;
+    });
+  }
 
   async function handleAddStatus() {
     setError(null);
@@ -230,40 +269,96 @@ export default function AttendanceReportPage() {
         ) : soldiers.length === 0 ? (
           <p className="text-slate-400 text-center py-8 text-sm">אין חיילים במסגרת זו</p>
         ) : (
-          <div className="space-y-4 border-t border-slate-200 pt-4">
+          <div className="space-y-5 border-t border-slate-200 pt-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="badge bg-emerald-50 text-emerald-700">{soldiers.length} חיילים</span>
-              <span className={`badge ${allReported ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                דווחו {reportedCount}/{soldiers.length}
-              </span>
+              <div className="flex items-center gap-2">
+                {hasExisting && <span className="badge bg-sky-50 text-sky-700">קיים דיווח לתאריך זה — ניתן לעדכן</span>}
+                <span className={`badge ${allReported ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  דווחו {reportedCount}/{soldiers.length}
+                </span>
+              </div>
             </div>
 
-            {groups.map((g) => (
-              <div key={g.name} className="space-y-1.5">
-                <h3 className="font-bold text-slate-600 text-sm border-r-4 border-emerald-500 pr-2">{g.name}</h3>
-                <div className="divide-y divide-slate-100">
-                  {g.soldiers.map((s) => (
-                    <div key={s.id} className="flex items-center gap-3 py-2 flex-wrap">
-                      <div className="flex-1 min-w-[160px]">
-                        <span className="font-medium text-slate-800">{s.full_name}</span>
-                        <span className="text-xs text-slate-400 mr-2">{s.personal_number}</span>
-                      </div>
-                      <select className={`input !w-auto min-w-[140px] ${values[s.id] ? '' : 'text-slate-400'}`}
-                        value={values[s.id] ?? ''}
-                        onChange={(e) => setValues((p) => ({ ...p, [s.id]: e.target.value }))}>
-                        <option value="">— בחר סטטוס —</option>
-                        {statuses.map((st) => <option key={st.id} value={st.id}>{st.status}</option>)}
-                      </select>
-                    </div>
-                  ))}
-                </div>
+            {/* Step 3 — pick a status to assign */}
+            <div className="space-y-2">
+              <h3 className="font-bold text-slate-700 text-sm">① בחר סטטוס לסימון</h3>
+              <div className="flex flex-wrap gap-2">
+                {statuses.map((st) => {
+                  const active = activeStatusId === st.id;
+                  const c = countByStatus.get(st.id) ?? 0;
+                  return (
+                    <button key={st.id} type="button" onClick={() => setActiveStatusId(active ? '' : st.id)}
+                      className={`rounded-full px-3 py-1.5 text-sm font-medium border transition ${
+                        active ? 'bg-emerald-600 text-white border-emerald-600'
+                               : 'bg-white text-slate-600 border-slate-300 hover:border-emerald-400'
+                      }`}>
+                      {st.status}{c > 0 && <span className={`mr-1 ${active ? 'text-emerald-100' : 'text-slate-400'}`}>({c})</span>}
+                    </button>
+                  );
+                })}
               </div>
-            ))}
+              {activeStatusId ? (
+                <p className="text-xs text-slate-500">
+                  סמן את החיילים שהסטטוס שלהם "{statusName(activeStatusId)}".
+                  <button type="button" onClick={applyToRemaining} className="text-emerald-600 hover:text-emerald-800 mr-2 underline">
+                    החל על כל מי שטרם סומן
+                  </button>
+                </p>
+              ) : (
+                <p className="text-xs text-slate-400">בחר סטטוס כדי לסמן חיילים</p>
+              )}
+            </div>
 
-            <div className="flex justify-center pt-2">
-              <button type="button" disabled={saving} onClick={handleConfirm} className="btn-primary min-w-[220px]">
-                {saving ? 'שומר…' : '✔️ אשר דוח נוכחות'}
-              </button>
+            {/* Step 4 — mark the relevant soldiers */}
+            <div className="space-y-3">
+              <h3 className="font-bold text-slate-700 text-sm">② סמן את החיילים הרלוונטיים</h3>
+              {groups.map((g) => (
+                <div key={g.name} className="space-y-1.5">
+                  <h4 className="font-bold text-slate-600 text-sm border-r-4 border-emerald-500 pr-2">{g.name}</h4>
+                  <div className="divide-y divide-slate-100">
+                    {g.soldiers.map((s) => {
+                      const assigned = values[s.id];
+                      const checked = !!assigned && assigned === activeStatusId;
+                      return (
+                        <label key={s.id}
+                          className={`flex items-center gap-3 py-2 ${activeStatusId ? 'cursor-pointer hover:bg-slate-50' : 'cursor-default'}`}>
+                          <input type="checkbox" className="w-4 h-4 accent-emerald-600" disabled={!activeStatusId}
+                            checked={checked} onChange={() => toggleSoldier(s.id)} />
+                          <span className="flex-1 min-w-[140px]">
+                            <span className="font-medium text-slate-800">{s.full_name}</span>
+                            <span className="text-xs text-slate-400 mr-2">{s.personal_number}</span>
+                          </span>
+                          {assigned
+                            ? <span className="badge bg-emerald-50 text-emerald-700">{statusName(assigned)}</span>
+                            : <span className="badge bg-slate-100 text-slate-400">לא דווח</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Step 5 — summary + confirm */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+              <h3 className="font-bold text-slate-700 text-sm">סיכום הדיווח</h3>
+              <div className="flex flex-wrap gap-2">
+                {statuses.filter((st) => (countByStatus.get(st.id) ?? 0) > 0).map((st) => (
+                  <span key={st.id} className="badge bg-white border border-slate-200 text-slate-700">
+                    {st.status}: <b className="mr-1">{countByStatus.get(st.id)}</b>
+                  </span>
+                ))}
+                {reportedCount < soldiers.length && (
+                  <span className="badge bg-amber-50 text-amber-700">טרם דווחו: {soldiers.length - reportedCount}</span>
+                )}
+              </div>
+              <div className="flex justify-center">
+                <button type="button" disabled={saving || !allReported} onClick={handleConfirm}
+                  className="btn-primary min-w-[240px] disabled:opacity-40">
+                  {saving ? 'שומר…' : allReported ? '✔️ אשר דוח נוכחות' : `יש לסמן את כל החיילים (${reportedCount}/${soldiers.length})`}
+                </button>
+              </div>
             </div>
           </div>
         )}

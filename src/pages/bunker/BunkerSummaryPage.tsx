@@ -30,7 +30,7 @@ export default function BunkerSummaryPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="📊" title="סטטוס נוכחי" subtitle="תמונת מצב תחמושת לפי מסגרת" />
+      <PageTitle icon="📊" title="סיכום" subtitle="תמונת מצב תחמושת לפי מסגרת" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -67,7 +67,7 @@ export default function BunkerSummaryPage() {
                 <th>פריט</th>
                 <th className="text-center text-emerald-700">סה״כ תחמושת</th>
                 <th className="text-center text-red-700">סה״כ שצ״ל</th>
-                <th className="text-center text-amber-700">נשאר</th>
+                <th className="text-center text-amber-700">סטטוס נוכחי</th>
               </tr>
             </thead>
             <tbody>

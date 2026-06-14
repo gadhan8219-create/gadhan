@@ -35,6 +35,10 @@ import BunkerSummaryPage from './pages/bunker/BunkerSummaryPage';
 // Personnel pages (שלישות)
 import AttendanceReportPage from './pages/personnel/AttendanceReportPage';
 import AttendanceRecordsPage from './pages/personnel/AttendanceRecordsPage';
+// Vehicle pages (רכב)
+import VehicleYrmPage from './pages/vehicles/VehicleYrmPage';
+import VehicleWhitePage from './pages/vehicles/VehicleWhitePage';
+import VehicleMilitaryPage from './pages/vehicles/VehicleMilitaryPage';
 
 export default function App() {
   return (
@@ -80,6 +84,11 @@ export default function App() {
         {/* ── שלישות (Personnel) ── */}
         <Route path="personnel/attendance" element={<AttendanceReportPage />} />
         <Route path="personnel/records" element={<AttendanceRecordsPage />} />
+
+        {/* ── רכב (Vehicles) ── */}
+        <Route path="vehicles/yrm" element={<VehicleYrmPage />} />
+        <Route path="vehicles/white" element={<VehicleWhitePage />} />
+        <Route path="vehicles/military" element={<VehicleMilitaryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

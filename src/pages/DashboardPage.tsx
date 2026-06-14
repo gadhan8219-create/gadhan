@@ -10,6 +10,8 @@ import {
   type WeaponsUnitChecks,
   type UnitAttendance,
 } from '../lib/dashboard';
+import { listVehiclesDueForTest, daysUntil, type Vehicle } from '../lib/vehicles';
+import { supabase } from '../lib/supabase';
 
 export default function DashboardPage() {
   const { profile } = useAuth();
@@ -20,6 +22,8 @@ export default function DashboardPage() {
   const [radio, setRadio] = useState<UnitPct[]>([]);
   const [weapons, setWeapons] = useState<WeaponsUnitChecks[]>([]);
   const [attendance, setAttendance] = useState<UnitAttendance[]>([]);
+  const [vehiclesDue, setVehiclesDue] = useState<Vehicle[]>([]);
+  const [unitNames, setUnitNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const today = todayISO();
 
@@ -28,15 +32,19 @@ export default function DashboardPage() {
     (async () => {
       setLoading(true);
       try {
-        const [r, w, a] = await Promise.all([
+        const [r, w, a, veh, units] = await Promise.all([
           radioGreenByUnit(scopeUnit),
           weaponsChecksByUnit(scopeUnit),
           attendanceDailyByUnit(today, scopeUnit),
+          listVehiclesDueForTest(scopeUnit),
+          supabase.from('units').select('id, name'),
         ]);
         if (cancelled) return;
         setRadio(r);
         setWeapons(w);
         setAttendance(a);
+        setVehiclesDue([...veh].sort((x, y) => daysUntil(x.next_test_date!) - daysUntil(y.next_test_date!)));
+        setUnitNames(new Map(((units.data ?? []) as Array<{ id: string; name: string }>).map((u) => [u.id, u.name])));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -185,6 +193,36 @@ export default function DashboardPage() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </DashSection>
+      </div>
+
+      {/* ── רכב: בדיקות קרובות ── */}
+      <div>
+        <h3 className="text-lg font-semibold mb-2">רכב</h3>
+        <DashSection
+          title="רכבים נדרשים לבדיקה"
+          subtitle="רכבים שבדיקתם הבאה בעוד פחות מ-4 ימים (או באיחור)"
+          to="/vehicles/military"
+        >
+          {loading ? (
+            <SkeletonRows />
+          ) : vehiclesDue.length === 0 ? (
+            <div className="text-sm text-emerald-600 py-4 text-center">אין רכבים הנדרשים לבדיקה בימים הקרובים</div>
+          ) : (
+            <div className="space-y-1.5">
+              {vehiclesDue.map((v) => {
+                const d = daysUntil(v.next_test_date!);
+                return (
+                  <div key={v.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="font-medium">{v.car_plate} · {unitNames.get(v.unit_id ?? '') ?? '—'}</span>
+                    <span className={`badge ${d < 0 ? 'bg-red-200 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
+                      {d < 0 ? `באיחור ${-d} ימים` : d === 0 ? 'היום' : `בעוד ${d} ימים`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </DashSection>

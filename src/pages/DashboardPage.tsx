@@ -54,6 +54,7 @@ export default function DashboardPage() {
       }),
     [attendance],
   );
+  const completed = attendanceSorted.filter((u) => u.performed);
   const notCompleted = attendanceSorted.filter((u) => !u.performed);
 
   return (
@@ -120,72 +121,74 @@ export default function DashboardPage() {
       </div>
 
       {/* ── קשר: ירוק בעיניים ── */}
-      <DashSection
-        title="קשר — ירוק בעיניים"
-        subtitle="אחוז ציוד קשר שנבדק בשבוע האחרון לפי מסגרת"
-        to="/unit-stock"
-      >
-        {loading ? (
-          <SkeletonRows />
-        ) : radio.length === 0 ? (
-          <Empty />
-        ) : (
-          <div className="space-y-2">
-            {radio.map((u) => (
-              <PctBar key={u.unitId} label={u.unitName} pct={u.pct} detail={`${u.ok}/${u.total}`} />
-            ))}
-          </div>
-        )}
-      </DashSection>
+      <div>
+        <h3 className="text-lg font-semibold mb-2">קשר</h3>
+        <DashSection
+          title="ירוק בעיניים"
+          subtitle="אחוז ציוד קשר שנבדק בשבוע האחרון לפי מסגרת"
+          to="/unit-stock"
+        >
+          {loading ? (
+            <SkeletonRows />
+          ) : radio.length === 0 ? (
+            <Empty />
+          ) : (
+            <div className="space-y-2">
+              {radio.map((u) => (
+                <PctBar key={u.unitId} label={u.unitName} pct={u.pct} detail={`${u.ok}/${u.total}`} />
+              ))}
+            </div>
+          )}
+        </DashSection>
+      </div>
 
-      {/* ── סיכום נוכחות יומי ── */}
-      <DashSection
-        title="סיכום נוכחות יומי (דוח 1)"
-        subtitle={`נכון לתאריך ${today} — מסגרות שדיווחו, ומסגרות שטרם השלימו`}
-        to="/personnel/records"
-      >
-        {loading ? (
-          <SkeletonRows />
-        ) : attendanceSorted.length === 0 ? (
-          <Empty />
-        ) : (
-          <div className="space-y-3">
-            {notCompleted.length > 0 && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                <div className="text-sm font-semibold text-red-700 mb-1">לא הושלם</div>
-                <div className="flex flex-wrap gap-2">
-                  {notCompleted.map((u) => (
-                    <span key={u.unitId} className="badge bg-red-100 text-red-700">
-                      {u.unitName} ({u.reported}/{u.totalSoldiers})
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {attendanceSorted.map((u) => (
-              <div key={u.unitId} className="rounded-lg border border-slate-200 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-medium">{u.unitName}</div>
-                  {u.performed ? (
+      {/* ── שלישות: סיכום נוכחות יומי ── */}
+      <div>
+        <h3 className="text-lg font-semibold mb-2">שלישות</h3>
+        <DashSection
+          title="סיכום נוכחות יומי (דוח 1)"
+          subtitle={`נכון לתאריך ${today} — מסגרות שדיווחו, ומסגרות שטרם השלימו`}
+          to="/personnel/records"
+        >
+          {loading ? (
+            <SkeletonRows />
+          ) : attendanceSorted.length === 0 ? (
+            <Empty />
+          ) : (
+            <div className="space-y-3">
+              {completed.map((u) => (
+                <div key={u.unitId} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{u.unitName}</div>
                     <span className="badge bg-emerald-100 text-emerald-700">דיווחה ({u.reported}/{u.totalSoldiers})</span>
-                  ) : (
-                    <span className="badge bg-red-100 text-red-700">לא הושלם ({u.reported}/{u.totalSoldiers})</span>
+                  </div>
+                  {u.byStatus.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {u.byStatus.map((s) => (
+                        <span key={s.status} className="badge bg-sky-50 text-sky-700">
+                          {s.status}: <b className="mr-1">{s.count}</b>
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
-                {u.byStatus.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {u.byStatus.map((s) => (
-                      <span key={s.status} className="badge bg-sky-50 text-sky-700">
-                        {s.status}: <b className="mr-1">{s.count}</b>
+              ))}
+              {notCompleted.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                  <div className="text-sm font-semibold text-red-700 mb-1">לא הושלם</div>
+                  <div className="flex flex-wrap gap-2">
+                    {notCompleted.map((u) => (
+                      <span key={u.unitId} className="badge bg-red-100 text-red-700">
+                        {u.unitName} ({u.reported}/{u.totalSoldiers})
                       </span>
                     ))}
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </DashSection>
+                </div>
+              )}
+            </div>
+          )}
+        </DashSection>
+      </div>
     </div>
   );
 }

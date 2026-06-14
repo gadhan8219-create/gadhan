@@ -7,7 +7,7 @@ import { PageTitle } from '../bunker/shared';
 export default function VehicleWhitePage() {
   return (
     <div className="space-y-5">
-      <PageTitle icon="🚗" title="רכב לבן" subtitle="ניהול רכבים לבנים" />
+      <PageTitle title="רכב לבן" subtitle="ניהול רכבים לבנים" />
       <div className="card text-center text-slate-400 py-12">
         בקרוב…
       </div>

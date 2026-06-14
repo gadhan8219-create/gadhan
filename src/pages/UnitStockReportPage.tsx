@@ -353,7 +353,7 @@ export default function UnitStockReportPage() {
                                   aria-label="סמן כנמצא"
                                   className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-900 disabled:opacity-50 text-sm"
                                 >
-                                  <span aria-hidden>👁</span>
+                                  <span aria-hidden></span>
                                   <span>נמצא</span>
                                 </button>
                               )}

@@ -186,7 +186,7 @@ export default function DelekPage() {
                 : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
           >
-            {t === 'fuel' ? '⛽ תדלוק' : '🔍 בדיקת יתרה'}
+            {t === 'fuel' ? 'תדלוק' : 'בדיקת יתרה'}
           </button>
         ))}
       </div>
@@ -232,7 +232,7 @@ export default function DelekPage() {
                   onChange={onReceiptPicked}
                 />
                 <p className="text-sm text-slate-500">
-                  {fuelForm.receiptFile ? `✅ ${fuelForm.receiptFile.name}` : '📷 צלם קבלה / בחר תמונה'}
+                  {fuelForm.receiptFile ? `${fuelForm.receiptFile.name}` : 'צלם קבלה / בחר תמונה'}
                 </p>
               </label>
               {fuelForm.receiptPreview && (
@@ -259,7 +259,7 @@ export default function DelekPage() {
             }`}>
               {fuelResult.ok ? (
                 <>
-                  <p className="text-2xl mb-1">✅</p>
+                  <p className="text-2xl mb-1"></p>
                   <p className="text-emerald-700 font-bold">התדלוק נרשם בהצלחה</p>
                   <p className="text-slate-500 text-sm mt-1">{fuelResult.msg}</p>
                 </>

@@ -123,7 +123,7 @@ export default function VehicleMilitaryPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="🚛" title="רכבים צבאיים" subtitle="צ׳ הרכב, שיוך למסגרת ותאריך הבדיקה הבא" />
+      <PageTitle title="רכבים צבאיים" subtitle="צ׳ הרכב, שיוך למסגרת ותאריך הבדיקה הבא" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -135,7 +135,7 @@ export default function VehicleMilitaryPage() {
       {/* Always-on alert for tests due within TEST_ALERT_DAYS */}
       {dueSoon.length > 0 && (
         <div className="rounded-xl bg-red-50 border-2 border-red-300 p-4">
-          <div className="font-bold text-red-700 mb-2">⚠️ רכבים נדרשים לבדיקה ({dueSoon.length})</div>
+          <div className="font-bold text-red-700 mb-2">רכבים נדרשים לבדיקה ({dueSoon.length})</div>
           <div className="space-y-1.5">
             {dueSoon.map((v) => {
               const d = daysUntil(v.next_test_date!);

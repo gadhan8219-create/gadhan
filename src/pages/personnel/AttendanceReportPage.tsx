@@ -204,7 +204,7 @@ export default function AttendanceReportPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="🧾" title="דיווח נוכחות (דוח 1)" subtitle="דיווח שוטף על נוכחות החיילים במהלך צו המילואים" />
+      <PageTitle title="דיווח נוכחות (דוח 1)" subtitle="דיווח שוטף על נוכחות החיילים במהלך צו המילואים" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -222,7 +222,7 @@ export default function AttendanceReportPage() {
       {/* Status management — admin only */}
       {isAdmin && (
         <div className="card space-y-3">
-          <h2 className="font-bold text-slate-800">🏷️ ניהול סטטוסים</h2>
+          <h2 className="font-bold text-slate-800">ניהול סטטוסים</h2>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[200px]">
               <label className="label">סטטוס חדש <span className="text-slate-400 text-xs">(עד {MAX_STATUS_LEN} תווים)</span></label>
@@ -231,7 +231,7 @@ export default function AttendanceReportPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddStatus(); }} />
             </div>
             <button type="button" disabled={addingStatus} onClick={handleAddStatus} className="btn-primary">
-              {addingStatus ? '…' : '➕ הוסף סטטוס'}
+              {addingStatus ? '…' : 'הוסף סטטוס'}
             </button>
           </div>
           {statuses.length > 0 && (
@@ -380,7 +380,7 @@ export default function AttendanceReportPage() {
               <div className="flex justify-center">
                 <button type="button" disabled={saving || !allReported} onClick={handleConfirm}
                   className="btn-primary min-w-[240px] disabled:opacity-40">
-                  {saving ? 'שומר…' : allReported ? '✔️ אשר דוח נוכחות' : `יש לסמן את כל החיילים (${reportedCount}/${soldiers.length})`}
+                  {saving ? 'שומר…' : allReported ? 'אשר דוח נוכחות' : `יש לסמן את כל החיילים (${reportedCount}/${soldiers.length})`}
                 </button>
               </div>
             </div>

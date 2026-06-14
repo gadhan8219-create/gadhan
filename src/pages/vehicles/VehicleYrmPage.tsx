@@ -136,7 +136,7 @@ export default function VehicleYrmPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="🚙" title="רכב יר״מ" subtitle="מספר רכב, שיוך למסגרת, טפסים ובדיקה הבאה" />
+      <PageTitle title="רכב יר״מ" subtitle="מספר רכב, שיוך למסגרת, טפסים ובדיקה הבאה" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">

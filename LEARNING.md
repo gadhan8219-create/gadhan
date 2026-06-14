@@ -1,6 +1,6 @@
 # LEARNING.md — ידע מלא של gadhan-all
 
-> CRM מאוחד לניהול: ציוד קשר (radio) · נשקים (weapons) · דלק (delek)
+> CRM מאוחד לניהול: ציוד קשר (radio) · נשקים (weapons) · דלק (delek) · בונקר תחמושת (bunker) · שלישות/נוכחות (personnel) · רכב (vehicles)
 
 ---
 
@@ -59,7 +59,7 @@ interface Profile {
 
 ## 3. מודול קשר (radio) — מלא
 
-### מצב: ✅ מלא ומחובר ל-Supabase
+### מצב: מלא ומחובר ל-Supabase
 
 ### Supabase Tables (radio)
 | טבלה | תוכן |
@@ -109,9 +109,9 @@ interface Profile {
 
 ---
 
-## 4. מודול נשקים (weapons) — מחובר ✅
+## 4. מודול נשקים (weapons) — מחובר 
 
-### מצב: ✅ מחובר ל-Supabase + Drive PDF
+### מצב: מחובר ל-Supabase + Drive PDF
 
 ---
 
@@ -128,7 +128,7 @@ interface Profile {
 ### Edge Function — יצירת PDF
 **שם:** `generate-weapon-checkout-pdf`
 
-> ⚠️ **PDF נוצר ב-GAS מ-HTML, לא ב-pdf-lib.** ה-edge function בונה מחרוזת HTML (RTL)
+> **PDF נוצר ב-GAS מ-HTML, לא ב-pdf-lib.** ה-edge function בונה מחרוזת HTML (RTL)
 > ושולח ל-GAS דרך action `savePdfFromHtml`. ה-GAS ממיר ל-PDF עם
 > `Utilities.newBlob(html, 'text/html').getAs('application/pdf')` — מנוע ה-HTML של Google
 > תומך BiDi מלא, ולכן עברית + מספרים (טלפון/תאריך/צ׳) יוצאים תקין.
@@ -169,7 +169,7 @@ URL: משתנה בכל deploy חדש — נשמר ב-secret GAS_PDF_URL.
 actions: `savePdf` (pdfBase64) | `savePdfFromHtml` (html → PDF) | `sendErrorEmail`
 ה-GAS רץ תחת חשבון המשתמש ← אין בעיית Drive quota (SA quota = 0)
 
-> ⚠️ **GAS deploy gotcha:** עריכה בעורך ≠ deployed. ה-URL `/exec` נעול לגרסה.
+> **GAS deploy gotcha:** עריכה בעורך ≠ deployed. ה-URL `/exec` נעול לגרסה.
 > action חדש בקוד בלי New version → ה-URL מחזיר `Unknown action: X`.
 > Deploy → Manage deployments → Edit (עיפרון) → New version → Deploy (שומר URL).
 > אם עושים New deployment (URL חדש) → לעדכן `supabase secrets set GAS_PDF_URL=...`.
@@ -183,7 +183,7 @@ actions: `savePdf` (pdfBase64) | `savePdfFromHtml` (html → PDF) | `sendErrorEm
 ### PDF — זרימה אסינכרונית (Fire-and-Forget)
 **עיקרון:** DB update קודם, PDF בלי await.
 ```typescript
-// ✅ נכון — הצלחה מוצגת מיד אחרי DB
+// נכון — הצלחה מוצגת מיד אחרי DB
 await dbUpdate();
 setSuccess(true);             // UI מיד
 fetch(fnUrl, { ... })         // בלי await
@@ -191,7 +191,7 @@ fetch(fnUrl, { ... })         // בלי await
   .then(r => { if (r.ok) setPdfUrl(r.url); })
   .catch(() => {});            // שגיאה → מייל מה-backend
 
-// ❌ שגוי — לחכות לPDF לפני הצלחה
+// שגוי — לחכות לPDF לפני הצלחה
 const result = await fetch(fnUrl, { ... });
 setSuccess(true); // המשתמש מחכה לDrive
 ```
@@ -266,7 +266,7 @@ interface PdfCallArgs {
 
 ## 5. מודול דלק (delek) — UI בלבד
 
-### מצב: 🔲 UI בלבד — Supabase עתידי
+### מצב: UI בלבד — Supabase עתידי
 
 ### רקע
 הדפים הוסבו מ-gadhan-delek (Vanilla HTML + GAS backend).
@@ -305,7 +305,7 @@ interface FuelLog {
 
 ## 6. עיצוב — Design System
 
-> ⚠️ **כלל עיצוב:** אל תוסיף אימוג'ים לממשק (כפתורים, כותרות, תפריט) בלי אישור מפורש מהמשתמש. הסגנון של הפרויקט הוא עסקי ורציני.
+> **כלל עיצוב (מעודכן 2026-06-14):** אין אימוג'ים בממשק בכלל — לא בכפתורים, לא בכותרות (`PageTitle.icon` אופציונלי ולא בשימוש), לא בהתראות. החריג היחיד הוא גלגל השיניים בכותרת סקשן "ניהול מערכת" בתפריט (`Layout.tsx`). הסגנון עסקי ורציני.
 
 ### צבעים
 | שימוש | Tailwind | Hex |
@@ -342,11 +342,15 @@ interface FuelLog {
 
 ## 7. Layout — ניווט
 
-### מודולים ב-Sidebar
+### מודולים ב-Sidebar (accordion — `SECTIONS` ב-Layout.tsx)
 ```
-📻 קשר (radio)        — /sign, /soldiers, /signings, ...
-🔫 נשקים (weapons)   — /weapons/checkout, /weapons/inventory, ...
-⛽ דלק (delek)        — /delek, /delek/admin
+קשר (radio)        — /sign, /soldiers, /signings, /unit-stock, ...
+נשק (weapons)      — /weapons/checkout, /weapons/transfer, /weapons/inventory, /weapons/armory
+דלק (delek)        — /delek, /delek/admin
+בונקר (bunker)     — /bunker/inventory, /receive, /dispense, /credit, /transfer, /regulate, /shatsal, /summary
+שלישות (personnel) — /personnel/attendance, /personnel/records
+רכב (vehicles)     — /vehicles/yrm, /vehicles/white, /vehicles/military
+ניהול מערכת (admin) — /soldiers-import, /soldiers, /users   (גלגל שיניים — האימוג'י היחיד שנשאר)
 ```
 
 ### ניווט מובייל
@@ -419,4 +423,106 @@ Tailwind לא הופך אוטומטית. `mr-` ו-`ml-` לא מתחלפים.
 
 ---
 
-*עודכן: 2026-06-10 (weapons module — Supabase + Drive PDF)*
+## 11. מודול בונקר (bunker) — תחמושת
+
+### מצב: מחובר ל-Supabase
+
+ניהול תחמושת לפי מחסנים ומסגרות. מיגרציות `0021`–`0025`.
+
+### Tables עיקריות
+| טבלה | תוכן |
+|------|------|
+| `bunker_warehouses` | מחסנים |
+| `bunker_items` | פריטי תחמושת |
+| `bunker_stock` | מלאי לכל פריט/מחסן |
+| `bunker_movements` | תנועות (קבלה/ניפוק/זיכוי/העברה/וויסות) |
+| `bunker_shatsal` | דיווחי שצ״ל (שימוש לצורכי לחימה) |
+
+### Pages (תחת /bunker)
+inventory (מלאי) · receive (קבלות) · dispense (ניפוק) · credit (זיכוי) · transfer (העברה) · regulate (וויסותים) · shatsal (שצ״ל) · summary (סיכום).
+
+### סיכום שצ״ל (summary)
+- **סה״כ תחמושת** = נופק פחות זוכה לפי פריט מתחילת הסבב.
+- **סה״כ שצ״ל** = סכום דיווחי השימוש לצורכי לחימה לפי פריט.
+- **סטטוס נוכחי** (העמודה, לשעבר "נשאר") = סה״כ תחמושת פחות סה״כ שצ״ל (יכול להיות שלילי).
+
+Lib: `lib/bunker.ts`.
+
+---
+
+## 12. מודול שלישות (personnel) — נוכחות דוח 1
+
+### מצב: מחובר ל-Supabase. מיגרציה `0026_attendance.sql`.
+
+### Tables
+| טבלה | תוכן |
+|------|------|
+| `attendance_statuses` | סטטוסי נוכחות (טקסט חופשי, ≤20 תווים, מנוהל ע"י admin) |
+| `attendance` | שורה אחת לכל חייל/תאריך → סטטוס. `unique(soldier_id, date)` |
+
+### RPC
+`attendance_confirm_report(p_date date, p_records jsonb)` — security definer. Upsert לכל חייל; חוסם תאריך עתידי; תומך עריכה רטרואקטיבית.
+
+### Pages
+| דף | נתיב | תיאור |
+|----|------|--------|
+| AttendanceReportPage | /personnel/attendance | דיווח דוח 1 בזרימת status-first: מסגרת → תאריך → בחירת סטטוס → סימון חיילים רלוונטיים → סיכום חי → אישור (פעיל רק כשכולם סומנו). תמיכה ב"סמן צוות". עריכת תאריך קיים. |
+| AttendanceRecordsPage | /personnel/records | צפייה לפי יום + ייצוא אקסל אמיתי (xlsx / SheetJS). |
+
+### הרשאות
+admin בוחר/מסנן מסגרת; raspar נעול למסגרת שלו (`effectiveUnitId = isAdmin ? unitFilter : raspUnitId`).
+
+Lib: `lib/attendance.ts` (כולל `todayISO()`, `listStatuses`, `getAttendanceForDate`, `confirmAttendance`).
+
+---
+
+## 13. מודול רכב (vehicles)
+
+### מצב: מחובר ל-Supabase + Storage. מיגרציה `0027_vehicles.sql`.
+
+### Tables
+| טבלה | תוכן |
+|------|------|
+| `vehicle_types` | סוגי רכב — נזרע: `יר״מ`, `לבן`, `צבאי` |
+| `vehicles` | `car_plate, unit_id, type_id, documents jsonb, next_test_date, next_test_range` |
+
+- `documents` = מערך `{ name, url, uploaded_at }`. קבצים ב-bucket `vehicle-docs` (ציבורי, מודל אבטחה של path לא-נחיש, כמו `fuel-receipts`).
+- `next_test_range` = קילומטרז' לבדיקה הבאה (חלופה ל-`next_test_date`).
+
+### Pages (תחת /vehicles)
+| דף | נתיב | תיאור |
+|----|------|--------|
+| VehicleYrmPage | /vehicles/yrm | רכב יר״מ — מספר רכב + שיוך מסגרת; העלאת "טופס יר״מ" + "רשיון"; בדיקה הבאה לפי תאריך **או** קילומטרז'. |
+| VehicleWhitePage | /vehicles/white | רכב לבן — placeholder ("בקרוב"), לא לגעת לפי החלטת מוצר. |
+| VehicleMilitaryPage | /vehicles/military | רכבים צבאיים — צ׳ הרכב + שיוך מסגרת + תאריך בדיקה ידני; **התראה תמידית** לרכבים שנותרו להם פחות מ-`TEST_ALERT_DAYS` (=4) ימים (כולל באיחור). |
+
+Lib: `lib/vehicles.ts` — `listVehicles`, `createVehicle`, `updateVehicle`, `deleteVehicle`, `uploadVehicleDoc`, `typeIdByName`, `listVehiclesDueForTest`, `daysUntil`, קבוע `TEST_ALERT_DAYS`.
+
+---
+
+## 14. דשבורד מרכזי (DashboardPage)
+
+נבנה מחדש (`lib/dashboard.ts` כשכבת אגרגציה). מציג, עם scoping של admin (כל המסגרות) מול raspar (מסגרת שלו):
+
+1. **פעולות מהירות** (בראש, ללא אימוג'ים): דיווח דוח 1, ייצוא דוח 1, החתמת נשק, זיכוי/העברה/אפסון, דיווח שצ״ל.
+2. **נשק** — שני סטטוסים זה לצד זה: ירוק בעיניים % + בדיקות נשק/אופטיקה % לפי מסגרת.
+3. **קשר** — ירוק בעיניים % לפי מסגרת.
+4. **שלישות** — סיכום נוכחות יומי: קודם מסגרות שביצעו (כמותי לפי סטטוס), ואז בלוק "לא הושלם" עם רשימת מסגרות מצומצמת.
+5. **רכב** — רכבים נדרשים לבדיקה ב-`TEST_ALERT_DAYS` הקרובים.
+
+כל סקשן הוא `Link` ללחיצה → הדוח הרלוונטי. סף טריות בדיקות = 7 ימים (`fresh()` / `INSPECTION_STALE_DAYS`).
+
+`lib/dashboard.ts`: `radioGreenByUnit`, `weaponsChecksByUnit`, `attendanceDailyByUnit` (כל אחד מקבל `unitId | null`).
+
+---
+
+## 15. PWA — אפליקציית מובייל
+
+- `vite-plugin-pwa` (manifest + workbox service worker, `registerType: 'autoUpdate'`).
+- אייקונים ב-`public/`: `pwa-192x192.png`, `pwa-512x512.png`, `maskable-512x512.png`, `apple-touch-icon.png` (נוצרו מ-`logo.png` עם `sips`).
+- meta tags ל-iOS/Android ב-`index.html`. כותרת הטאב: `CRM גדחה״ן`.
+- ניתן להתקנה מ"הוסף למסך הבית" בדפדפן.
+
+---
+
+*עודכן: 2026-06-14 (bunker + personnel + vehicles + dashboard + PWA; הסרת כל האימוג'ים פרט לגלגל השיניים)*

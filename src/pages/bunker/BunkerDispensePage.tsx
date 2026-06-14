@@ -85,7 +85,7 @@ export default function BunkerDispensePage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="⬇️" title="ניפוק תחמושת" subtitle="ניפוק ממחסן למסגרת" />
+      <PageTitle title="ניפוק תחמושת" subtitle="ניפוק ממחסן למסגרת" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -118,12 +118,12 @@ export default function BunkerDispensePage() {
 
         {ready ? (
           <div className="space-y-3 border-t border-slate-200 pt-4">
-            <input className="input max-w-xs" placeholder="🔍 סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input className="input max-w-xs" placeholder="סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
             <LiveItemsGrid items={gridItems} values={values} cap
               onChange={(id, v) => setValues((p) => ({ ...p, [id]: v }))} />
             <div className="flex justify-center">
               <button type="button" disabled={saving} onClick={handleDispense} className="btn-primary min-w-[200px]">
-                {saving ? 'מנפק…' : '✅ בצע ניפוק'}
+                {saving ? 'מנפק…' : 'בצע ניפוק'}
               </button>
             </div>
           </div>
@@ -135,7 +135,7 @@ export default function BunkerDispensePage() {
       {/* History */}
       {unit && (
         <div className="card space-y-3">
-          <h2 className="font-bold text-slate-800">📋 ניפוקים אחרונים — {unit}</h2>
+          <h2 className="font-bold text-slate-800">ניפוקים אחרונים — {unit}</h2>
           <HistoryControls limit={limit} onLimitChange={setLimit} count={dispenses.length} label="ניפוקים" />
           <div className="table-wrap card p-0 overflow-x-auto">
             <table className="table-base">

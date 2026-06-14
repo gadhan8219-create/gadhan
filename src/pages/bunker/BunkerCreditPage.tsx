@@ -80,7 +80,7 @@ export default function BunkerCreditPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="⬆️" title="זיכוי תחמושת" subtitle="החזרת תחמושת ממסגרת למחסן" />
+      <PageTitle title="זיכוי תחמושת" subtitle="החזרת תחמושת ממסגרת למחסן" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -114,13 +114,13 @@ export default function BunkerCreditPage() {
         {ready ? (
           <div className="space-y-3 border-t border-slate-200 pt-4">
             <p className="text-slate-500 text-sm">ניתן להחזיר יותר מהכמות הזמינה.</p>
-            <input className="input max-w-xs" placeholder="🔍 סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input className="input max-w-xs" placeholder="סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
             <LiveItemsGrid items={gridItems} values={values} accent="red"
               onChange={(id, v) => setValues((p) => ({ ...p, [id]: v }))} />
             <div className="flex justify-center">
               <button type="button" disabled={saving} onClick={handleCredit}
                 className="btn-primary min-w-[200px] !bg-red-600 hover:!bg-red-700">
-                {saving ? 'מזכה…' : '↩️ בצע זיכוי'}
+                {saving ? 'מזכה…' : '↩בצע זיכוי'}
               </button>
             </div>
           </div>
@@ -132,7 +132,7 @@ export default function BunkerCreditPage() {
       {/* History */}
       {unit && (
         <div className="card space-y-3">
-          <h2 className="font-bold text-slate-800">📜 זיכויים אחרונים — {unit}</h2>
+          <h2 className="font-bold text-slate-800">זיכויים אחרונים — {unit}</h2>
           <HistoryControls limit={limit} onLimitChange={setLimit} count={credits.length} label="זיכויים" />
           <div className="table-wrap card p-0 overflow-x-auto">
             <table className="table-base">

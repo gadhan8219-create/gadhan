@@ -100,7 +100,7 @@ export default function BunkerInventoryPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="📦" title="מלאי בונקר" subtitle="מלאי תחמושת זמין בכל המחסנים" />
+      <PageTitle title="מלאי בונקר" subtitle="מלאי תחמושת זמין בכל המחסנים" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -111,14 +111,14 @@ export default function BunkerInventoryPage() {
 
       {/* Warehouse management */}
       <div className="card space-y-4">
-        <h2 className="font-bold text-slate-800">🏚️ ניהול מחסנים</h2>
+        <h2 className="font-bold text-slate-800">ניהול מחסנים</h2>
         <div className="flex border-b border-slate-200">
           {(['create', 'delete'] as const).map((t) => (
             <button key={t} type="button" onClick={() => { setTab(t); setError(null); }}
               className={`flex-1 py-2.5 text-sm font-bold transition border-b-2 ${
                 tab === t ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-400 hover:text-slate-600'
               }`}>
-              {t === 'create' ? '➕ יצירת מחסן' : '🗑️ מחיקת מחסן'}
+              {t === 'create' ? 'יצירת מחסן' : 'מחיקת מחסן'}
             </button>
           ))}
         </div>
@@ -129,7 +129,7 @@ export default function BunkerInventoryPage() {
               <label className="label">שם המחסן</label>
               <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="שם המחסן..." />
             </div>
-            <button type="submit" disabled={busy} className="btn-primary">➕ הקם מחסן</button>
+            <button type="submit" disabled={busy} className="btn-primary">הקם מחסן</button>
           </form>
         ) : (
           <div className="flex flex-wrap items-end gap-3">
@@ -141,7 +141,7 @@ export default function BunkerInventoryPage() {
               </select>
             </div>
             <button type="button" disabled={busy || !delId} onClick={handleDelete}
-              className="btn-primary !bg-red-600 hover:!bg-red-700 disabled:opacity-40">🗑️ מחק מחסן</button>
+              className="btn-primary !bg-red-600 hover:!bg-red-700 disabled:opacity-40">מחק מחסן</button>
           </div>
         )}
         <p className="text-xs text-slate-400">לא ניתן למחוק מחסן שמשויכת אליו תחמושת.</p>
@@ -150,7 +150,7 @@ export default function BunkerInventoryPage() {
       {/* Stock table — all warehouses as columns */}
       <div className="card space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
-          <input className="input max-w-xs" placeholder="🔍 סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input className="input max-w-xs" placeholder="סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
           <span className="badge bg-emerald-50 text-emerald-700">{rows.length} פריטים</span>
         </div>
         <div className="card p-0 overflow-x-auto max-w-full mx-auto">

@@ -83,7 +83,7 @@ export default function BunkerReceivePage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="📥" title="קבלת תחמושת" subtitle="קליטת תחמושת ממקור חיצוני למחסן" />
+      <PageTitle title="קבלת תחמושת" subtitle="קליטת תחמושת ממקור חיצוני למחסן" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -115,19 +115,19 @@ export default function BunkerReceivePage() {
           <div className="space-y-4 border-t border-slate-200 pt-4">
             {/* Add item */}
             <div className="space-y-2">
-              <h3 className="font-bold text-slate-700 text-sm">➕ הוספת פריט חדש</h3>
+              <h3 className="font-bold text-slate-700 text-sm">הוספת פריט חדש</h3>
               <div className="flex flex-wrap items-end gap-3">
                 <input className="input flex-1 min-w-[200px]" value={newItem}
                   onChange={(e) => setNewItem(e.target.value)} placeholder="שם הפריט..." />
                 <button type="button" disabled={addingItem} onClick={handleAddItem} className="btn-secondary">
-                  {addingItem ? '…' : '➕ הוסף פריט'}
+                  {addingItem ? '…' : 'הוסף פריט'}
                 </button>
               </div>
             </div>
 
             {/* Item quantities */}
             <div className="space-y-2">
-              <input className="input max-w-xs" placeholder="🔍 סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              <input className="input max-w-xs" placeholder="סינון פריט..." value={search} onChange={(e) => setSearch(e.target.value)} />
               {gridItems.length === 0 ? (
                 <p className="text-slate-400 text-center py-6 text-sm">
                   {items.length === 0 ? 'אין פריטים — הוסף פריט ראשון למעלה' : 'לא נמצאו פריטים'}
@@ -140,7 +140,7 @@ export default function BunkerReceivePage() {
 
             <div className="flex justify-center">
               <button type="button" disabled={saving} onClick={handleConfirm} className="btn-primary min-w-[200px]">
-                {saving ? 'שומר…' : '📥 אשר קבלה'}
+                {saving ? 'שומר…' : 'אשר קבלה'}
               </button>
             </div>
           </div>
@@ -152,7 +152,7 @@ export default function BunkerReceivePage() {
       {/* Recent receipts */}
       {warehouseId && (
         <div className="card space-y-3">
-          <h2 className="font-bold text-slate-800">📋 קבלות אחרונות</h2>
+          <h2 className="font-bold text-slate-800">קבלות אחרונות</h2>
           <HistoryControls limit={limit} onLimitChange={setLimit} count={receipts.length} label="קבלות" />
           <div className="table-wrap card p-0 overflow-x-auto">
             <table className="table-base">

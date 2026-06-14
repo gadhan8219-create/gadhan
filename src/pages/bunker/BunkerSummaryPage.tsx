@@ -30,7 +30,7 @@ export default function BunkerSummaryPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="📊" title="סיכום" subtitle="תמונת מצב תחמושת לפי מסגרת" />
+      <PageTitle title="סיכום" subtitle="תמונת מצב תחמושת לפי מסגרת" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -56,7 +56,7 @@ export default function BunkerSummaryPage() {
             </select>
           </div>
           <button type="button" onClick={load} disabled={loading} className="btn-primary">
-            {loading ? 'טוען…' : '📊 רענן סיכום'}
+            {loading ? 'טוען…' : 'רענן סיכום'}
           </button>
         </div>
 

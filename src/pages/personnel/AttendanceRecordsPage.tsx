@@ -123,7 +123,7 @@ export default function AttendanceRecordsPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="📑" title="דוחות נוכחות" subtitle="צפייה בנוכחות לפי יום וייצוא לאקסל" />
+      <PageTitle title="דוחות נוכחות" subtitle="צפייה בנוכחות לפי יום וייצוא לאקסל" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -151,7 +151,7 @@ export default function AttendanceRecordsPage() {
           </div>
           <div className="flex items-end">
             <button type="button" onClick={exportXlsx} disabled={!effectiveUnitId || rows.length === 0}
-              className="btn-secondary w-full disabled:opacity-40">📊 ייצא לאקסל</button>
+              className="btn-secondary w-full disabled:opacity-40">ייצא לאקסל</button>
           </div>
         </div>
 

@@ -143,7 +143,7 @@ export default function DelekAdminPage() {
               tab === t ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-400 hover:text-slate-600'
             }`}
           >
-            {t === 'cards' ? '💳 כרטיסים' : '📋 יומן תדלוק'}
+            {t === 'cards' ? 'כרטיסים' : 'יומן תדלוק'}
           </button>
         ))}
       </div>
@@ -153,7 +153,7 @@ export default function DelekAdminPage() {
         <>
           {cards.length === 0 ? (
             <div className="card text-center py-16 text-slate-400">
-              <p className="text-4xl mb-3">⛽</p>
+              <p className="text-4xl mb-3"></p>
               <p className="font-medium">אין כרטיסים עדיין</p>
               <p className="text-sm mt-1">הוסף כרטיס ראשון</p>
             </div>
@@ -204,7 +204,7 @@ export default function DelekAdminPage() {
                           </button>
                           <button type="button" disabled={busy === c.id} onClick={() => patchCard(c, { is_archived: !c.is_archived })}
                             className="text-slate-500 hover:text-slate-700 disabled:opacity-40" title={c.is_archived ? 'שחזר' : 'העבר לארכיון'}>
-                            {c.is_archived ? '⮌' : '🗄'}
+                            {c.is_archived ? '' : ''}
                           </button>
                           <button type="button" disabled={busy === c.id} onClick={() => deleteCard(c)}
                             className="text-red-600 hover:text-red-800 disabled:opacity-40" title="מחק">
@@ -225,7 +225,7 @@ export default function DelekAdminPage() {
       {tab === 'logs' && (
         logs.length === 0 ? (
           <div className="card text-center py-16 text-slate-400">
-            <p className="text-4xl mb-3">📋</p>
+            <p className="text-4xl mb-3"></p>
             <p className="font-medium">אין תדלוקים עדיין</p>
           </div>
         ) : (

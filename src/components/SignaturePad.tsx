@@ -90,7 +90,7 @@ const SignaturePad = forwardRef<SignaturePadHandle>((_props, ref) => {
       />
       <div className="flex justify-between items-center mt-1.5">
         <span className={`text-xs ${empty ? 'text-slate-400' : 'text-emerald-600 font-medium'}`}>
-          {empty ? 'חתום כאן...' : 'חתימה הוזנה ✓'}
+          {empty ? 'חתום כאן...' : 'חתימה הוזנה '}
         </span>
         {!empty && (
           <button type="button" onClick={clear}

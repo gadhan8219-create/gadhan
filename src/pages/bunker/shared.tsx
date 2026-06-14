@@ -43,10 +43,10 @@ export function stockFor(item: BunkerItem, warehouse: string): number {
 
 // ── Reusable presentational pieces ───────────────────────────────────────────
 
-export function PageTitle({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
+export function PageTitle({ icon, title, subtitle }: { icon?: string; title: string; subtitle?: string }) {
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-900">{icon} {title}</h1>
+      <h1 className="text-2xl font-bold text-slate-900">{icon ? `${icon} ` : ''}{title}</h1>
       {subtitle && <p className="text-slate-500 text-sm mt-0.5">{subtitle}</p>}
     </div>
   );

@@ -137,6 +137,16 @@ export default function AttendanceReportPage() {
     });
   }
 
+  // Assign the active status to an entire team (overwrites their current status).
+  function applyToTeam(teamSoldiers: Soldier[]) {
+    if (!activeStatusId) return;
+    setValues((p) => {
+      const next = { ...p };
+      for (const s of teamSoldiers) next[s.id] = activeStatusId;
+      return next;
+    });
+  }
+
   async function handleAddStatus() {
     setError(null);
     const name = newStatus.trim();
@@ -313,31 +323,45 @@ export default function AttendanceReportPage() {
             {/* Step 4 — mark the relevant soldiers */}
             <div className="space-y-3">
               <h3 className="font-bold text-slate-700 text-sm">② סמן את החיילים הרלוונטיים</h3>
-              {groups.map((g) => (
+              {groups.map((g) => {
+                const teamReported = g.soldiers.filter((s) => values[s.id]).length;
+                return (
                 <div key={g.name} className="space-y-1.5">
-                  <h4 className="font-bold text-slate-600 text-sm border-r-4 border-emerald-500 pr-2">{g.name}</h4>
+                  <div className="flex items-center justify-between gap-2 border-r-4 border-emerald-500 pr-2">
+                    <h4 className="font-bold text-slate-600 text-sm">
+                      {g.name} <span className="text-slate-400 font-normal">({teamReported}/{g.soldiers.length})</span>
+                    </h4>
+                    {activeStatusId && (
+                      <button type="button" onClick={() => applyToTeam(g.soldiers)}
+                        className="text-xs text-emerald-600 hover:text-emerald-800 underline whitespace-nowrap">
+                        סמן צוות כ״{statusName(activeStatusId)}״
+                      </button>
+                    )}
+                  </div>
                   <div className="divide-y divide-slate-100">
                     {g.soldiers.map((s) => {
                       const assigned = values[s.id];
-                      const checked = !!assigned && assigned === activeStatusId;
+                      const isActive = !!assigned && assigned === activeStatusId;
                       return (
                         <label key={s.id}
-                          className={`flex items-center gap-3 py-2 ${activeStatusId ? 'cursor-pointer hover:bg-slate-50' : 'cursor-default'}`}>
-                          <input type="checkbox" className="w-4 h-4 accent-emerald-600" disabled={!activeStatusId}
-                            checked={checked} onChange={() => toggleSoldier(s.id)} />
+                          className={`flex items-center gap-3 py-2 rounded-lg ${activeStatusId ? 'cursor-pointer hover:bg-slate-50' : 'cursor-default'} ${isActive ? 'bg-emerald-50/60' : ''}`}>
+                          <input type="checkbox"
+                            className={`w-4 h-4 ${isActive ? 'accent-emerald-600' : 'accent-slate-400'}`}
+                            disabled={!activeStatusId} checked={!!assigned} onChange={() => toggleSoldier(s.id)} />
                           <span className="flex-1 min-w-[140px]">
                             <span className="font-medium text-slate-800">{s.full_name}</span>
                             <span className="text-xs text-slate-400 mr-2">{s.personal_number}</span>
                           </span>
                           {assigned
-                            ? <span className="badge bg-emerald-50 text-emerald-700">{statusName(assigned)}</span>
+                            ? <span className={`badge ${isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-50 text-sky-700'}`}>{statusName(assigned)}</span>
                             : <span className="badge bg-slate-100 text-slate-400">לא דווח</span>}
                         </label>
                       );
                     })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Step 5 — summary + confirm */}

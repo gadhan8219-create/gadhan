@@ -30,7 +30,7 @@ export default function BunkerSummaryPage() {
 
   return (
     <div className="space-y-5">
-      <PageTitle icon="📊" title="סיכום תחמושת" subtitle="תמונת מצב תחמושת לפי מסגרת" />
+      <PageTitle icon="📊" title="סטטוס נוכחי" subtitle="תמונת מצב תחמושת לפי מסגרת" />
 
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
@@ -41,8 +41,8 @@ export default function BunkerSummaryPage() {
 
       {/* Explanation */}
       <div className="rounded-xl bg-sky-50 border border-sky-200 px-4 py-3 text-sm text-sky-900 space-y-1">
-        <p><b>סה״כ תחמושת</b> = כמה תחמושת נמצאת כרגע בשטח לפי פריט — <b>סה״כ נופק</b> פחות <b>סה״כ זוכה</b>.</p>
-        <p><b>סה״כ שצ״ל</b> = סכום דיווחי השימוש לצורכי לחימה לפי פריט.</p>
+        <p><b>סה״כ תחמושת</b> = סה״כ נופק פחות סה״כ זוכה לפי פריט מתחילת הסבב.</p>
+        <p><b>סה״כ שצ״ל</b> = סכום דיווחי השימוש לצורכי לחימה לפי פריט (יכול להיות יותר מסה״כ תחמושת — כוננות, משיכה מיחידות ת״פ וכו׳).</p>
         <p><b>נשאר</b> = סה״כ תחמושת פחות סה״כ שצ״ל (עשוי להיות שלילי).</p>
       </div>
 

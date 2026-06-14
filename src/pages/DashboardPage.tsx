@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { todayISO } from '../lib/attendance';
@@ -45,6 +45,17 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeUnit]);
 
+  // Reported units first, then the ones that didn't complete.
+  const attendanceSorted = useMemo(
+    () =>
+      [...attendance].sort((a, b) => {
+        if (a.performed !== b.performed) return a.performed ? -1 : 1;
+        return a.unitName.localeCompare(b.unitName, 'he');
+      }),
+    [attendance],
+  );
+  const notCompleted = attendanceSorted.filter((u) => !u.performed);
+
   return (
     <div className="space-y-6">
       <div>
@@ -54,9 +65,63 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* ── ירוק בעיניים: קשר ── */}
+      {/* ── פעולות מהירות ── */}
+      <div className="card">
+        <h3 className="text-lg font-semibold mb-3">פעולות מהירות</h3>
+        <div className="flex gap-3 flex-wrap">
+          <Link to="/personnel/attendance" className="btn-primary">דיווח דוח 1</Link>
+          <Link to="/personnel/records" className="btn-secondary">ייצוא דוח 1</Link>
+          <Link to="/weapons/checkout" className="btn-secondary">החתמת נשק</Link>
+          <Link to="/weapons/transfer" className="btn-secondary">זיכוי / העברה / אפסון</Link>
+          <Link to="/bunker/shatsal" className="btn-secondary">דיווח שצ"ל</Link>
+        </div>
+      </div>
+
+      {/* ── נשק: ירוק בעיניים + בדיקות, זה ליד זה ── */}
+      <div>
+        <h3 className="text-lg font-semibold mb-2">נשק</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <DashSection
+            title="ירוק בעיניים"
+            subtitle="אחוז נשקים עם ביקורת בשבוע האחרון לפי מסגרת"
+            to="/weapons/inventory"
+          >
+            {loading ? (
+              <SkeletonRows />
+            ) : weapons.length === 0 ? (
+              <Empty />
+            ) : (
+              <div className="space-y-2">
+                {weapons.map((u) => (
+                  <PctBar key={u.unitId} label={u.unitName} pct={u.greenPct} detail={`${u.greenOk}/${u.total}`} />
+                ))}
+              </div>
+            )}
+          </DashSection>
+
+          <DashSection
+            title="בדיקות נשק / אופטיקה"
+            subtitle="אחוז נשקים שעברו בדיקה בשבוע האחרון לפי מסגרת"
+            to="/weapons/inventory"
+          >
+            {loading ? (
+              <SkeletonRows />
+            ) : weapons.length === 0 ? (
+              <Empty />
+            ) : (
+              <div className="space-y-2">
+                {weapons.map((u) => (
+                  <PctBar key={u.unitId} label={u.unitName} pct={u.weaponPct} detail={`${u.weaponOk}/${u.total}`} />
+                ))}
+              </div>
+            )}
+          </DashSection>
+        </div>
+      </div>
+
+      {/* ── קשר: ירוק בעיניים ── */}
       <DashSection
-        title="🟢 ירוק בעיניים — קשר"
+        title="קשר — ירוק בעיניים"
         subtitle="אחוז ציוד קשר שנבדק בשבוע האחרון לפי מסגרת"
         to="/unit-stock"
       >
@@ -73,66 +138,38 @@ export default function DashboardPage() {
         )}
       </DashSection>
 
-      {/* ── ירוק בעיניים: נשקייה ── */}
-      <DashSection
-        title="🟢 ירוק בעיניים — נשקייה"
-        subtitle="אחוז נשקים עם ביקורת ירוק בעיניים בשבוע האחרון לפי מסגרת"
-        to="/weapons/inventory"
-      >
-        {loading ? (
-          <SkeletonRows />
-        ) : weapons.length === 0 ? (
-          <Empty />
-        ) : (
-          <div className="space-y-2">
-            {weapons.map((u) => (
-              <PctBar key={u.unitId} label={u.unitName} pct={u.greenPct} detail={`${u.greenOk}/${u.total}`} />
-            ))}
-          </div>
-        )}
-      </DashSection>
-
-      {/* ── בדיקות נשק / אופטיקה ── */}
-      <DashSection
-        title="🔧 בדיקות נשק / אופטיקה"
-        subtitle="אחוז נשקים שעברו בדיקת נשק/אופטיקה בשבוע האחרון לפי מסגרת"
-        to="/weapons/inventory"
-      >
-        {loading ? (
-          <SkeletonRows />
-        ) : weapons.length === 0 ? (
-          <Empty />
-        ) : (
-          <div className="space-y-2">
-            {weapons.map((u) => (
-              <PctBar key={u.unitId} label={u.unitName} pct={u.weaponPct} detail={`${u.weaponOk}/${u.total}`} />
-            ))}
-          </div>
-        )}
-      </DashSection>
-
       {/* ── סיכום נוכחות יומי ── */}
       <DashSection
-        title="🧍 סיכום נוכחות יומי (דוח 1)"
-        subtitle={`נכון לתאריך ${today} — אילו מסגרות דיווחו, ופירוט כמותי לפי סטטוס`}
+        title="סיכום נוכחות יומי (דוח 1)"
+        subtitle={`נכון לתאריך ${today} — מסגרות שדיווחו, ומסגרות שטרם השלימו`}
         to="/personnel/records"
       >
         {loading ? (
           <SkeletonRows />
-        ) : attendance.length === 0 ? (
+        ) : attendanceSorted.length === 0 ? (
           <Empty />
         ) : (
           <div className="space-y-3">
-            {attendance.map((u) => (
+            {notCompleted.length > 0 && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                <div className="text-sm font-semibold text-red-700 mb-1">לא הושלם</div>
+                <div className="flex flex-wrap gap-2">
+                  {notCompleted.map((u) => (
+                    <span key={u.unitId} className="badge bg-red-100 text-red-700">
+                      {u.unitName} ({u.reported}/{u.totalSoldiers})
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {attendanceSorted.map((u) => (
               <div key={u.unitId} className="rounded-lg border border-slate-200 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-medium">{u.unitName}</div>
                   {u.performed ? (
                     <span className="badge bg-emerald-100 text-emerald-700">דיווחה ({u.reported}/{u.totalSoldiers})</span>
                   ) : (
-                    <span className="badge bg-red-100 text-red-700">
-                      לא הושלם ({u.reported}/{u.totalSoldiers})
-                    </span>
+                    <span className="badge bg-red-100 text-red-700">לא הושלם ({u.reported}/{u.totalSoldiers})</span>
                   )}
                 </div>
                 {u.byStatus.length > 0 && (
@@ -149,16 +186,6 @@ export default function DashboardPage() {
           </div>
         )}
       </DashSection>
-
-      {/* ── פעולות מהירות ── */}
-      <div className="card">
-        <h3 className="text-lg font-semibold mb-3">פעולות מהירות</h3>
-        <div className="flex gap-3 flex-wrap">
-          <Link to="/personnel/attendance" className="btn-primary">🧍 דיווח דוח 1</Link>
-          <Link to="/weapons/checkout" className="btn-secondary">🔫 החתמת נשק</Link>
-          <Link to="/weapons/transfer" className="btn-secondary">↔️ זיכוי / העברה / אפסון</Link>
-        </div>
-      </div>
     </div>
   );
 }

@@ -28,8 +28,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <form onSubmit={handleSubmit} className="card w-full max-w-md">
-        <img src="/logo.png" alt="גדחה״ן רדיו" className="w-20 h-20 object-contain mx-auto mb-3" />
-        <p className="text-sm text-slate-500 text-center mb-6">ניהול ציוד קשר</p>
+        <img src="/logo.png" alt="גדחה״ן" className="w-28 h-28 object-contain mx-auto mb-6" />
 
         <label className="label" htmlFor="username">שם משתמש</label>
         <input

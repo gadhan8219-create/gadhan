@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { HistoryControls, LiveItemsGrid, PageTitle, type LiveItem } from './shared';
+import { useAuth } from '../../lib/auth';
+import { supabase } from '../../lib/supabase';
 import {
   listItems, listUnitStock, applyShatsal, recentShatsal,
   BUNKER_UNITS,
@@ -9,9 +11,16 @@ import {
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 export default function BunkerShatsalPage() {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+
   const [items, setItems] = useState<BunkerItem[]>([]);
   const [unitStock, setUnitStock] = useState<BunkerUnitStockRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // A raspar may report שצ״ל only for their OWN framework. Resolve their org
+  // unit name and lock the picker to it (admin keeps the full roster).
+  const [myUnitName, setMyUnitName] = useState<string | null>(null);
 
   const [unit, setUnit] = useState('');
   const [reporter, setReporter] = useState('');
@@ -27,6 +36,16 @@ export default function BunkerShatsalPage() {
   useEffect(() => {
     listItems().then(setItems).catch((e) => setError((e as Error).message));
   }, []);
+
+  useEffect(() => {
+    if (isAdmin || !profile?.unit_id) return;
+    supabase.from('units').select('name').eq('id', profile.unit_id).single()
+      .then(({ data }) => {
+        const name = data?.name ?? null;
+        setMyUnitName(name);
+        if (name) setUnit(name);
+      });
+  }, [isAdmin, profile?.unit_id]);
 
   useEffect(() => {
     if (!unit) { setUnitStock([]); setReports([]); return; }
@@ -94,10 +113,14 @@ export default function BunkerShatsalPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="label">מסגרת</label>
-            <select className="input" value={unit} onChange={(e) => setUnit(e.target.value)}>
-              <option value="">— בחר מסגרת —</option>
-              {BUNKER_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
+            {isAdmin ? (
+              <select className="input" value={unit} onChange={(e) => setUnit(e.target.value)}>
+                <option value="">— בחר מסגרת —</option>
+                {BUNKER_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            ) : (
+              <input className="input bg-slate-100 cursor-not-allowed" value={myUnitName ?? '—'} disabled readOnly />
+            )}
           </div>
           <div>
             <label className="label">אחראי דיווח</label>

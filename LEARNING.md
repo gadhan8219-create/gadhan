@@ -446,8 +446,9 @@ inventory (מלאי) · receive (קבלות) · dispense (ניפוק) · credit 
 
 ### הרשאות בונקר (UI)
 - **רס״פ**: רשאי רק **shatsal** (דיווח שצ״ל) ו-**summary** (סיכום). ששת המסכים האחרים — `requireAdmin` ב-`App.tsx` ומסומנים `admin: true` ב-`Layout.tsx` (מוסתרים בניווט).
+- **דיווח שצ״ל — רק למסגרת שלו**: רס״פ אינו בוחר מסגרת; שדה "מסגרת" נעול לשם המסגרת שלו (`units.name` לפי `profile.unit_id`, נטען ב-`BunkerShatsalPage`). admin בוחר חופשי מתוך `BUNKER_UNITS`.
 - **מנהל**: כל מסכי הבונקר.
-- **אכיפת שרת**: ה-RPCs `bunker_apply_receipt/dispense/credit/transfer/regulation` קוראים `perform require_admin()` כשורה ראשונה (מיגרציה `0031`) — רס״פ שינסה לקרוא ל-API ישירות יקבל שגיאת `42501`. `bunker_apply_shatsal` נשאר פתוח. `inventory`/`items` מוגנים ב-RLS (`*_admin_write` עם `is_admin()`, מיגרציה 0028). ראה "סטנדרט אכיפת הרשאות" בסעיף 16.
+- **אכיפת שרת**: ה-RPCs `bunker_apply_receipt/dispense/credit/transfer/regulation` קוראים `perform require_admin()` כשורה ראשונה (מיגרציה `0031`) — רס״פ שינסה לקרוא ל-API ישירות יקבל שגיאת `42501`. `bunker_apply_shatsal` נשאר פתוח אך **מוגן** (מיגרציה `0032`): admin מדווח לכל מסגרת, רס״פ רק למסגרת ששמה = `units.name` שלו, אחרת `42501` ("רס״פ רשאי לדווח שצ״ל רק למסגרת שלו"). `inventory`/`items` מוגנים ב-RLS (`*_admin_write` עם `is_admin()`, מיגרציה 0028). ראה "סטנדרט אכיפת הרשאות" בסעיף 16.
 
 ### סיכום שצ״ל (summary)
 - **סה״כ תחמושת** = נופק פחות זוכה לפי פריט מתחילת הסבב.
@@ -562,7 +563,7 @@ Lib: `lib/vehicles.ts` — `listVehicles`, `createVehicle`, `updateVehicle`, `de
 | `require_raspar_or_admin()` | אם הקורא אינו admin או raspar פעיל |
 
 `auth.uid()` בתוך SECURITY DEFINER משקף את ה**קורא** (claims של ה-JWT עוברים), לכן `is_admin()` נכון גם שם.
-**הוחל על:** `bunker_apply_receipt/dispense/credit/transfer/regulation`. **לא** על `bunker_apply_shatsal` (רס״פ צריך). **כלל לעתיד:** RPC חדש שמבצע פעולה מוגנת — להוסיף את ה-guard המתאים בשורה הראשונה.
+**הוחל על:** `bunker_apply_receipt/dispense/credit/transfer/regulation` (`require_admin`). `bunker_apply_shatsal` פתוח לרס״פ אך אוכף scope עצמי (מיגרציה `0032`): admin לכל מסגרת, רס״פ רק למסגרת ששמה = `units.name` שלו (אחרת `42501`). **כלל לעתיד:** RPC חדש שמבצע פעולה מוגנת — להוסיף את ה-guard המתאים בשורה הראשונה.
 
 ### `mark_password_changed()` (RPC)
 `SECURITY DEFINER`, מעדכן `password_changed_at = now()` ל-`auth.uid()`. נקראת אחרי `updateUser({ password })` ב-`ChangePasswordPage` (לא-פאטאלי — עטוף ב-try/catch).
@@ -605,4 +606,4 @@ frame-ancestors 'none'; upgrade-insecure-requests
 
 *עודכן: 2026-06-16 (Security hardening: idle logout, password expiry 60d, password strength, private buckets, CSP/headers, rate limiting; DocViewerModal — תצוגת מסמכים inline; הסרת כותרת login + הגדלת לוגו)*
 
-*עודכן: 2026-06-16 (הרשאות בונקר לרס״פ — רק shatsal+summary; מספר רכב ייחודי — מיגרציה 0030 + בדיקת client)*
+*עודכן: 2026-06-16 (הרשאות בונקר לרס״פ — רק shatsal+summary; דיווח שצ״ל נעול למסגרת של הרס״פ בלבד — UI + מיגרציה 0032; מספר רכב ייחודי — מיגרציה 0030 + בדיקת client)*

@@ -1,6 +1,19 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { signedUrl } from '../../lib/storage';
 import { goodiLookup } from './fuelApi';
+
+/** Receipts live in the private fuel-receipts bucket — sign on demand to view. */
+async function openReceipt(receipt: string, driver: string, createdAt: string) {
+  try {
+    const dateStr = new Date(createdAt).toLocaleDateString('he-IL').replace(/\//g, '.');
+    const ext = receipt.split('.').pop()?.toLowerCase() || 'jpg';
+    const url = await signedUrl('fuel-receipts', receipt, { download: `${driver} ${dateStr}.${ext}` });
+    window.open(url, '_blank', 'noopener');
+  } catch (e) {
+    alert((e as Error).message);
+  }
+}
 
 interface FuelCard {
   id: string;
@@ -249,7 +262,7 @@ export default function DelekAdminPage() {
                     <td>{l.driver_name}</td>
                     <td>
                       {l.receipt_url
-                        ? <a href={l.receipt_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-sm">צפה</a>
+                        ? <button type="button" onClick={() => openReceipt(l.receipt_url!, l.driver_name, l.created_at)} className="text-blue-600 hover:text-blue-800 text-sm">צפה</button>
                         : <span className="text-slate-400 text-sm">—</span>}
                     </td>
                   </tr>

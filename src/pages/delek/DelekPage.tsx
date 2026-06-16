@@ -116,20 +116,15 @@ export default function DelekPage() {
         .from('fuel-receipts')
         .upload(path, receiptFile, { contentType: receiptFile.type || 'image/jpeg', upsert: true });
       if (upErr) throw upErr;
-      // The stored object key stays ASCII, but the download filename carries the
-      // Hebrew driver name + date so a downloaded receipt is human-readable.
-      const dateStr = new Date().toLocaleDateString('he-IL').replace(/\//g, '.');
-      const downloadName = `${driverName.trim()} ${dateStr}.${ext}`;
-      const { data: pub } = supabase.storage
-        .from('fuel-receipts')
-        .getPublicUrl(path, { download: downloadName });
 
-      // Log the fueling.
+      // Bucket is private (migration 0028): store the object PATH, not a public
+      // URL. A short-lived signed URL is generated on demand when an admin views
+      // the receipt (see DelekAdminPage).
       const { error: logErr } = await supabase.from('fuel_logs').insert({
         card_number:  cn,
         fuel_type:    card.fuel_type ?? null,
         driver_name:  driverName.trim(),
-        receipt_url:  pub.publicUrl,
+        receipt_url:  path,
         performed_by: profile?.id ?? null,
       });
       if (logErr) throw logErr;

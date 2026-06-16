@@ -13,9 +13,10 @@ export interface VehicleType {
 }
 
 export interface VehicleDoc {
-  name: string; // label, e.g. "טופס יר״מ" / "רשיון"
-  url: string;
+  name: string;  // label, e.g. "טופס יר״מ" / "רשיון"
+  path: string;  // object path within the (private) vehicle-docs bucket
   uploaded_at: string;
+  url?: string;  // legacy public URL on rows created before bucket privatization
 }
 
 export interface Vehicle {
@@ -114,19 +115,18 @@ export async function deleteVehicle(id: string): Promise<void> {
  */
 export async function uploadVehicleDoc(vehicle: Vehicle, label: string, file: File): Promise<VehicleDoc[]> {
   const ext = (file.name.split('.').pop() || 'pdf').toLowerCase().replace(/[^a-z0-9]/g, '') || 'pdf';
-  const safePlate = vehicle.car_plate.replace(/[^a-zA-Z0-9_-]/g, '_');
   const safeLabel = label.replace(/[^a-zA-Z0-9_-]/g, '_') || 'doc';
   const path = `${vehicle.id}/${safeLabel}-${Date.now()}.${ext}`;
   const { error: upErr } = await supabase.storage
     .from('vehicle-docs')
     .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: true });
   if (upErr) throw upErr;
-  const downloadName = `${label} ${safePlate}.${ext}`;
-  const { data: pub } = supabase.storage.from('vehicle-docs').getPublicUrl(path, { download: downloadName });
 
+  // Bucket is private (migration 0028): store the object path, not a public URL.
+  // A short-lived signed URL is generated on demand at view time.
   const next: VehicleDoc[] = [
     ...vehicle.documents.filter((d) => d.name !== label),
-    { name: label, url: pub.publicUrl, uploaded_at: new Date().toISOString() },
+    { name: label, path, uploaded_at: new Date().toISOString() },
   ];
   await updateVehicle(vehicle.id, { documents: next });
   return next;

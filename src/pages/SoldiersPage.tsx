@@ -3,7 +3,18 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { logAudit } from '../lib/audit';
 import { loadSoldierHeldItems, type HeldItem } from '../lib/heldItems';
+import { signedUrl } from '../lib/storage';
 import type { Soldier, Team, Unit } from '../lib/database.types';
+
+/** Signing PDFs live at "<soldier_id>.pdf" in the private signing-pdfs bucket. */
+async function openSigningPdf(soldierId: string) {
+  try {
+    const url = await signedUrl('signing-pdfs', `${soldierId}.pdf`);
+    window.open(url, '_blank', 'noopener');
+  } catch (e) {
+    alert((e as Error).message);
+  }
+}
 
 export default function SoldiersPage() {
   const { profile } = useAuth();
@@ -213,14 +224,13 @@ export default function SoldiersPage() {
 
             {selected.pdf_url && (
               <div className="mb-3">
-                <a
-                  href={selected.pdf_url}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => openSigningPdf(selected.id)}
                   className="text-sm text-emerald-700 hover:underline"
                 >
-                  הצג PDF עדכני ↗
-                </a>
+                  הצג PDF עדכני
+                </button>
               </div>
             )}
             <div className="text-sm font-semibold text-slate-700 mb-2">פריטים חתומים</div>

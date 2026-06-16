@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { PageTitle } from '../bunker/shared';
 import type { Unit } from '../../lib/database.types';
+import { signedUrl } from '../../lib/storage';
 import {
   listVehicles,
   createVehicle,
@@ -12,6 +13,7 @@ import {
   uploadVehicleDoc,
   typeIdByName,
   type Vehicle,
+  type VehicleDoc,
 } from '../../lib/vehicles';
 
 const DOC_LABELS = ['טופס יר״מ', 'רשיון'];
@@ -115,6 +117,16 @@ export default function VehicleYrmPage() {
     try {
       await deleteVehicle(id);
       setVehicles((prev) => prev.filter((x) => x.id !== id));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function openDoc(doc: VehicleDoc) {
+    setError(null);
+    try {
+      const url = await signedUrl('vehicle-docs', doc.path ?? doc.url ?? '');
+      window.open(url, '_blank', 'noopener');
     } catch (e) {
       setError((e as Error).message);
     }
@@ -249,7 +261,7 @@ export default function VehicleYrmPage() {
                       <div key={label} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
                         <span className="font-medium">{label}:</span>
                         {doc ? (
-                          <a href={doc.url} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline">צפה</a>
+                          <button type="button" onClick={() => openDoc(doc)} className="text-sky-600 hover:underline">צפה</button>
                         ) : (
                           <span className="text-slate-400">אין</span>
                         )}

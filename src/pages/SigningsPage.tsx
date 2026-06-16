@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
+import { signedUrl } from '../lib/storage';
 import type { SigningType, Team, Unit } from '../lib/database.types';
+
+/** Signing PDFs live at "<soldier_id>.pdf" in the private signing-pdfs bucket. */
+async function openSigningPdf(soldierId: string) {
+  try {
+    const url = await signedUrl('signing-pdfs', `${soldierId}.pdf`);
+    window.open(url, '_blank', 'noopener');
+  } catch (e) {
+    alert((e as Error).message);
+  }
+}
 
 interface SigningRow {
   id: string;
@@ -10,7 +21,7 @@ interface SigningRow {
   created_at: string;
   unit_id: string;
   team_id: string | null;
-  soldier: { full_name: string; personal_number: string; pdf_url: string | null } | null;
+  soldier: { id: string; full_name: string; personal_number: string; pdf_url: string | null } | null;
   performer: { full_name: string } | null;
   items: Array<{
     quantity: number;
@@ -66,7 +77,7 @@ export default function SigningsPage() {
         .from('signings')
         .select(`
           id, type, notes, created_at, unit_id, team_id,
-          soldier:soldiers(full_name, personal_number, pdf_url),
+          soldier:soldiers(id, full_name, personal_number, pdf_url),
           performer:profiles!signings_performed_by_fkey(full_name),
           items:signing_items(quantity, action, serial_number, item:items(name))
         `)
@@ -226,15 +237,14 @@ export default function SigningsPage() {
                   </td>
                   <td className="text-xs text-slate-600 max-w-[16rem]">{r.notes ?? '—'}</td>
                   <td>
-                    {r.soldier?.pdf_url ? (
-                      <a
-                        href={r.soldier.pdf_url}
-                        target="_blank"
-                        rel="noreferrer"
+                    {r.soldier?.pdf_url && r.soldier.id ? (
+                      <button
+                        type="button"
+                        onClick={() => openSigningPdf(r.soldier!.id)}
                         className="text-emerald-700 hover:underline text-xs"
                       >
                         פתח
-                      </a>
+                      </button>
                     ) : (
                       <span className="text-slate-400 text-xs">—</span>
                     )}

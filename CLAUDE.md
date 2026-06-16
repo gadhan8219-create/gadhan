@@ -78,6 +78,16 @@ import { useAuth } from '../lib/auth';
 const { profile, session } = useAuth();
 ```
 
+### הרשאות — סטנדרט חובה (UI + שרת)
+חסימת מסך לבדה **אינה אבטחה** — היא רק מסתירה UI. כל פעולה מוגנת חייבת אכיפה **גם בשרת**:
+
+1. **UI**: `<ProtectedRoute requireAdmin>` ב-`App.tsx` + `admin: true` בפריט הניווט ב-`Layout.tsx`.
+2. **שרת** (חובה, אחד מהשניים):
+   - כתיבה לטבלה → RLS `with check (is_admin() …)`.
+   - RPC (`security definer`) → `perform require_admin();` (או `require_raspar_or_admin()`) כשורה **ראשונה** בגוף.
+
+העוזרים `require_admin()` / `require_raspar_or_admin()` מוגדרים במיגרציה `0031_authz_standard.sql`. ראה LEARNING.md סעיף 16 ("סטנדרט אכיפת הרשאות"). **כל RPC/פעולה מוגנת חדשה — חייב/ת לעמוד בסטנדרט הזה.**
+
 ### קלאסות עיצוב (index.css)
 ```
 .btn-primary   — כפתור ראשי (emerald-600)

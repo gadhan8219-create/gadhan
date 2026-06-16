@@ -447,7 +447,7 @@ inventory (מלאי) · receive (קבלות) · dispense (ניפוק) · credit 
 ### הרשאות בונקר (UI)
 - **רס״פ**: רשאי רק **shatsal** (דיווח שצ״ל) ו-**summary** (סיכום). ששת המסכים האחרים — `requireAdmin` ב-`App.tsx` ומסומנים `admin: true` ב-`Layout.tsx` (מוסתרים בניווט).
 - **מנהל**: כל מסכי הבונקר.
-- הערה: החסימה כיום היא ברמת ה-UI (כמו שאר דפי ה-admin באפליקציה). ה-RPCs `bunker_apply_dispense/credit/transfer/regulation/receipt` עדיין `grant execute ... to authenticated` ללא בדיקת `is_admin()` בגוף — חיזוק שרת הוא follow-up אופציונלי. `inventory`/`items` כן מוגנים ב-RLS (`*_admin_write` עם `is_admin()`, מיגרציה 0028).
+- **אכיפת שרת**: ה-RPCs `bunker_apply_receipt/dispense/credit/transfer/regulation` קוראים `perform require_admin()` כשורה ראשונה (מיגרציה `0031`) — רס״פ שינסה לקרוא ל-API ישירות יקבל שגיאת `42501`. `bunker_apply_shatsal` נשאר פתוח. `inventory`/`items` מוגנים ב-RLS (`*_admin_write` עם `is_admin()`, מיגרציה 0028). ראה "סטנדרט אכיפת הרשאות" בסעיף 16.
 
 ### סיכום שצ״ל (summary)
 - **סה״כ תחמושת** = נופק פחות זוכה לפי פריט מתחילת הסבב.
@@ -547,6 +547,22 @@ Lib: `lib/vehicles.ts` — `listVehicles`, `createVehicle`, `updateVehicle`, `de
 | **באקטים פרטיים** | `signing-pdfs`, `vehicle-docs`, `fuel-receipts` פרטיים (0028). קריאה רק דרך signed URL מאומת (TTL שעה). | `lib/storage.ts` (`signedUrl`, `objectPath`) |
 | **Security Headers** | CSP, HSTS, X-Content-Type-Options, X-Frame-Options=DENY, Referrer-Policy, Permissions-Policy. | `vercel.json` → `headers` |
 | **Rate Limiting** | Supabase Auth: "sign-ups and sign-ins" הונמך ל-~10 לכל 5 דק' לכל IP (הגנת brute-force). מוגדר ב-Dashboard, לא בקוד. | Supabase Dashboard → Auth → Rate Limits |
+| **אכיפת הרשאות בשרת** | חסימת UI לבדה לא מספיקה — כל פעולה מוגנת נאכפת גם בשרת. | מיגרציה `0031` (ראה למטה) |
+
+### סטנדרט אכיפת הרשאות (חובה לכל פעולה — גם עתידית)
+חסימת מסך ב-`ProtectedRoute requireAdmin` מסתירה UI אבל לא עוצרת קריאת API ישירה. **לכן כל פעולה מוגנת חייבת אכיפת שרת בנוסף:**
+
+1. **כתיבה לטבלה** → RLS policy עם `with check (is_admin() …)` / `current_unit_id()`. זו כבר הנורמה (0001, 0028).
+2. **RPC מסוג SECURITY DEFINER** → קריאה ל-`perform require_admin();` (או `require_raspar_or_admin()`) כ**שורה ראשונה** בגוף הפונקציה.
+
+עוזרים (מיגרציה `0031_authz_standard.sql`):
+| פונקציה | מתי לזרוק |
+|----------|-----------|
+| `require_admin()` | אם הקורא אינו admin פעיל (`42501`, הודעה "הרשאת מנהל נדרשת") |
+| `require_raspar_or_admin()` | אם הקורא אינו admin או raspar פעיל |
+
+`auth.uid()` בתוך SECURITY DEFINER משקף את ה**קורא** (claims של ה-JWT עוברים), לכן `is_admin()` נכון גם שם.
+**הוחל על:** `bunker_apply_receipt/dispense/credit/transfer/regulation`. **לא** על `bunker_apply_shatsal` (רס״פ צריך). **כלל לעתיד:** RPC חדש שמבצע פעולה מוגנת — להוסיף את ה-guard המתאים בשורה הראשונה.
 
 ### `mark_password_changed()` (RPC)
 `SECURITY DEFINER`, מעדכן `password_changed_at = now()` ל-`auth.uid()`. נקראת אחרי `updateUser({ password })` ב-`ChangePasswordPage` (לא-פאטאלי — עטוף ב-try/catch).

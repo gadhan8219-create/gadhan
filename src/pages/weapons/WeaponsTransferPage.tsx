@@ -345,7 +345,8 @@ export default function WeaponsTransferPage() {
     if (!srcSoldier || !dstSoldier) { setError('בחר חייל מקור ויעד'); return; }
     if (srcSoldier.unit_id !== dstSoldier.unit_id) { setError('לא ניתן להעביר בין מסגרות שונות'); return; }
     if (!checked.size) { setError('לא נבחרו פריטים'); return; }
-    const rows = srcSerials.filter((r) => checked.has(r.serial_number));
+    const rows = srcSerials.filter((r) => checked.has(r.serial_number) && !r.is_zeroed);
+    if (!rows.length) { setError('פריט מאופסן ניתן לזיכוי בלבד'); return; }
     const dstItemIds = new Set(dstSerials.map((r) => r.item_id));
     const conflict = rows.find((r) => dstItemIds.has(r.item_id));
     if (conflict) { setError(`חייל היעד כבר מחזיק: ${conflict.item_name}`); return; }
@@ -368,11 +369,12 @@ export default function WeaponsTransferPage() {
 
   const roshOverlap = srcSoldier && dstSoldier
     ? (() => {
-        // Exclude qty-only synthetic serials — ראש בראש only applies to real serial items
+        // Exclude qty-only synthetic serials — ראש בראש only applies to real serial items.
+        // Also exclude מאופסן items — a zeroed weapon can only be credited (זיכוי).
         const sm: Record<string, SerialRow> = {};
-        for (const r of srcSerials) if (!isQtySerial(r.serial_number)) sm[r.item_id] = r;
+        for (const r of srcSerials) if (!isQtySerial(r.serial_number) && !r.is_zeroed) sm[r.item_id] = r;
         const dm: Record<string, SerialRow> = {};
-        for (const r of dstSerials) if (!isQtySerial(r.serial_number)) dm[r.item_id] = r;
+        for (const r of dstSerials) if (!isQtySerial(r.serial_number) && !r.is_zeroed) dm[r.item_id] = r;
         return Object.keys(sm).filter((id) => dm[id])
           .map((id) => ({ itemId: id, itemName: sm[id].item_name, srcRow: sm[id], dstRow: dm[id] }));
       })()
@@ -422,6 +424,25 @@ export default function WeaponsTransferPage() {
       }
       setSuccess(`${rows.length} פריטים אופסנו אצל ${srcSoldier?.full_name}`);
       await loadAll(); resetForms();
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  }
+
+  /** Remove an already-zeroed item from איפסון (clears the flag). Item stays signed. */
+  async function doUnipasoon(id: string) {
+    setLoading(true); setError(null);
+    try {
+      const now = new Date().toISOString();
+      const { data, error } = await supabase.from('weapons_item_serials')
+        .update({ is_zeroed: false, zeroed_at: null, zeroed_note: null, green_check_at: now })
+        .eq('id', id)
+        .select('id');
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) {
+        throw new Error('לא ניתן להוציא מאיפסון — ייתכן שאין הרשאה למסגרת זו');
+      }
+      setSuccess('הפריט הוצא מאיפסון');
+      await loadAll();
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }
@@ -605,20 +626,22 @@ export default function WeaponsTransferPage() {
             <div className="space-y-2">
               {srcSerials.map((r) => {
                 const atDst = dstSoldier ? dstSerials.some((d) => d.item_id === r.item_id) : false;
+                const blocked = atDst || r.is_zeroed;
                 return (
                   <label key={r.serial_number}
                     className={`flex items-center gap-3 p-3 rounded-lg border transition ${
-                      atDst ? 'opacity-40 cursor-not-allowed border-slate-200' :
+                      blocked ? 'opacity-40 cursor-not-allowed border-slate-200' :
                       checked.has(r.serial_number) ? 'border-emerald-400 bg-emerald-50 cursor-pointer' : 'border-slate-200 hover:border-slate-300 cursor-pointer'
                     }`}>
                     <input type="checkbox" className="accent-emerald-600 w-4 h-4"
-                      checked={checked.has(r.serial_number)} disabled={atDst}
+                      checked={checked.has(r.serial_number)} disabled={blocked}
                       onChange={() => toggleCheck(r.serial_number)} />
                     <span className="flex-1 text-sm font-medium">{r.item_name}</span>
                     {!isQtySerial(r.serial_number) && (
                       <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
                     )}
-                    {atDst && <span className="text-xs text-slate-400">כבר ביעד</span>}
+                    {r.is_zeroed && <span className="text-xs text-orange-600">מאופסן — רק זיכוי</span>}
+                    {atDst && !r.is_zeroed && <span className="text-xs text-slate-400">כבר ביעד</span>}
                   </label>
                 );
               })}
@@ -714,6 +737,13 @@ export default function WeaponsTransferPage() {
                           <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
                         )}
                         {r.is_zeroed && <span className="badge bg-orange-100 text-orange-700 text-xs">מאופסן</span>}
+                        {r.is_zeroed && (
+                          <button type="button" disabled={loading}
+                            onClick={() => doUnipasoon(r.id)}
+                            className="text-xs font-medium text-orange-700 hover:text-orange-900 disabled:opacity-50 whitespace-nowrap">
+                            הוצא מאיפסון
+                          </button>
+                        )}
                       </label>
                       {isChecked && !r.is_zeroed && (
                         <div className="px-3 pb-3">

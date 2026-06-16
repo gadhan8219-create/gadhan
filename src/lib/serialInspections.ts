@@ -100,3 +100,14 @@ export async function markSerialInspected(serialId: string): Promise<string> {
   if (error) throw error;
   return now;
 }
+
+/** Mark "ירוק בעיניים" (located/accounted-for) now. Returns the new timestamp. */
+export async function markSerialGreenCheck(serialId: string): Promise<string> {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('item_serials')
+    .update({ green_check_at: now })
+    .eq('id', serialId);
+  if (error) throw error;
+  return now;
+}

@@ -9,6 +9,7 @@ import {
   inspectionStatus,
   loadUnitInspectionReport,
   markSerialInspected,
+  markSerialGreenCheck,
   type InspectionRow,
 } from '../lib/serialInspections';
 import type { Unit, Item } from '../lib/database.types';
@@ -34,7 +35,8 @@ export default function UnitStockReportPage() {
   const [mode, setMode] = useState<'matrix' | 'inspections'>(profile?.role === 'admin' ? 'matrix' : 'inspections');
   // For admin: optional unit filter. Raspar: forced to their unit (never read this).
   const [unitFilter, setUnitFilter] = useState<string>('');
-  const [busySerialId, setBusySerialId] = useState<string | null>(null);
+  // Busy key while a row action runs: `${serialId}:inspect` or `${serialId}:green`.
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   // ticks every minute so status flips from נמצא → דרוש בדיקה without a reload
   const [, setTick] = useState(0);
 
@@ -119,7 +121,7 @@ export default function UnitStockReportPage() {
   }, [sortedInspections]);
 
   async function handleMarkInspected(row: InspectionRow) {
-    setBusySerialId(row.serialId);
+    setBusyKey(`${row.serialId}:inspect`);
     try {
       const ts = await markSerialInspected(row.serialId);
       await logAudit({
@@ -133,7 +135,25 @@ export default function UnitStockReportPage() {
     } catch (e) {
       alert((e as Error).message);
     } finally {
-      setBusySerialId(null);
+      setBusyKey(null);
+    }
+  }
+
+  async function handleMarkGreen(row: InspectionRow) {
+    setBusyKey(`${row.serialId}:green`);
+    try {
+      const ts = await markSerialGreenCheck(row.serialId);
+      await logAudit({
+        action: 'serial.green_check',
+        targetType: 'item_serial',
+        targetId: row.serialId,
+        details: { item_id: row.itemId, serial: row.serialNumber, unit_id: row.unitId },
+      });
+      setInspections((prev) => prev.map((r) => (r.serialId === row.serialId ? { ...r, greenCheckAt: ts } : r)));
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setBusyKey(null);
     }
   }
 
@@ -302,14 +322,13 @@ export default function UnitStockReportPage() {
                     <th className="text-center">סטטוס</th>
                     <th>נבדק לאחרונה</th>
                     <th>ירוק בעיניים</th>
-                    <th className="w-24"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {inspectionGroups.map((g) => (
                     <Fragment key={g.unitId}>
                       <tr className="bg-slate-100">
-                        <td colSpan={8} className="font-semibold text-slate-700 px-2 py-1.5">
+                        <td colSpan={7} className="font-semibold text-slate-700 px-2 py-1.5">
                           {g.unitName}
                           <span className="text-xs font-normal text-slate-500 mr-2">({g.rows.length} צ׳ים)</span>
                         </td>
@@ -341,27 +360,37 @@ export default function UnitStockReportPage() {
                                 <span className="badge bg-amber-100 text-amber-800">דרוש בדיקה</span>
                               )}
                             </td>
-                            <td className="text-xs text-slate-600">
-                              {r.lastInspectedAt
-                                ? new Date(r.lastInspectedAt).toLocaleString('he-IL')
-                                : '—'}
-                            </td>
-                            <td className="text-xs text-slate-600">
-                              {r.greenCheckAt
-                                ? new Date(r.greenCheckAt).toLocaleString('he-IL')
-                                : '—'}
-                            </td>
-                            <td>
+                            <td className="text-xs text-slate-600 whitespace-nowrap">
+                              <div>
+                                {r.lastInspectedAt
+                                  ? new Date(r.lastInspectedAt).toLocaleString('he-IL')
+                                  : '—'}
+                              </div>
                               {canMark && (
                                 <button
                                   onClick={() => handleMarkInspected(r)}
-                                  disabled={busySerialId === r.serialId}
-                                  title="סמן כ״נמצא״ — מעדכן תאריך בדיקה"
-                                  aria-label="סמן כנמצא"
-                                  className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-900 disabled:opacity-50 text-sm"
+                                  disabled={busyKey === `${r.serialId}:inspect`}
+                                  title="סמן בדיקה טכנית — מעדכן את תאריך הבדיקה האחרונה"
+                                  className="mt-1 inline-flex items-center text-amber-700 hover:text-amber-900 disabled:opacity-50 text-xs font-medium"
                                 >
-                                  <span aria-hidden></span>
-                                  <span>נמצא</span>
+                                  סמן בדיקה
+                                </button>
+                              )}
+                            </td>
+                            <td className="text-xs text-slate-600 whitespace-nowrap">
+                              <div>
+                                {r.greenCheckAt
+                                  ? new Date(r.greenCheckAt).toLocaleString('he-IL')
+                                  : '—'}
+                              </div>
+                              {canMark && (
+                                <button
+                                  onClick={() => handleMarkGreen(r)}
+                                  disabled={busyKey === `${r.serialId}:green`}
+                                  title="סמן ירוק בעיניים — הפריט נמצא וידוע מיקומו"
+                                  className="mt-1 inline-flex items-center text-emerald-700 hover:text-emerald-900 disabled:opacity-50 text-xs font-medium"
+                                >
+                                  סמן ירוק
                                 </button>
                               )}
                             </td>

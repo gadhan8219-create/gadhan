@@ -275,6 +275,16 @@ interface PdfCallArgs {
 - **קשר** (`item_serials.green_check_at`, חדש ב-`0036`): `SignFormPage` מעדכן `green_check_at=now` לכל שורת צ׳ אחרי שמירת ההחתמה — **best-effort** (לא חוסם את ההחתמה אם נכשל). מוצג בעמודה חדשה "ירוק בעיניים" בדוח הצ׳ים (`UnitStockReportPage`) + ייצוא CSV; נקרא דרך ה-view `item_serial_status` (`greenCheckAt` ב-`InspectionRow`).
 - **הערה:** זיכוי בנשקייה לא מאפס את תאריכי הבדיקה (`weapon_check_at`/`green_check_at`) — אדרבה, מעכשיו הזיכוי **מעדכן** את הירוק בעיניים. `is_zeroed` עדיין מתאפס בזיכוי.
 
+### איפסון — הוצאה מאיפסון + חסימת העברה/ראש-בראש (2026-06-16, ללא מיגרציה)
+- **הוצאה מאיפסון**: פריט עם `is_zeroed=true` מציג בטאב איפסון (`WeaponsTransferPage`) כפתור "הוצא מאיפסון" → `doUnipasoon(id)` מאפס `is_zeroed=false, zeroed_at=null, zeroed_note=null` ומעדכן `green_check_at=now`. כולל זיהוי RLS no-op (`.select('id')` + 0 שורות → שגיאה). הפריט נשאר חתום על החייל.
+- **פריט מאופסן ניתן לזיכוי בלבד**: בטאב **העברה** שורה מאופסנת מושבתת (checkbox disabled + רמז "מאופסן — רק זיכוי"); `doTransfer` מסנן `!r.is_zeroed` ומחזיר שגיאה אם נבחר רק מאופסן. בטאב **ראש בראש** `roshOverlap` מחריג פריטים מאופסנים (כמו שמחריג צ׳ים סינתטיים). זיכוי (`doZikhui`) ממילא מוחק את ה-flag.
+
+### דוח מלאי קשר לפי צ׳ — שני כפתורי סימון ייחודיים (2026-06-16, ללא מיגרציה)
+ב-`UnitStockReportPage` (תצוגת בדיקות צ׳ים) במקום כפתור "נמצא" יחיד יש כעת **שני** כפתורים ייחודיים, אחד בכל עמודה:
+- עמודת **"נבדק לאחרונה"** (שם נשמר — מציין בדיקה טכנית לפי החוקים הקיימים): כפתור "סמן בדיקה" → `handleMarkInspected` → `markSerialInspected` מעדכן `last_inspected_at` (+`last_inspected_by`).
+- עמודת **"ירוק בעיניים"** (הפריט נמצא וידוע מיקומו): כפתור "סמן ירוק" → `handleMarkGreen` → `markSerialGreenCheck` (חדש ב-`serialInspections.ts`) מעדכן `green_check_at`.
+- העמודה הריקה הישנה (`w-24`) הוסרה; `colSpan` של שורות הקבוצה עודכן 8→7. `busySerialId` הוחלף ב-`busyKey` (`${id}:inspect` / `${id}:green`). audit חדש: `serial.green_check`. שתי הפעולות על אותה טבלה/שורה (`item_serials`) — אותו policy שכבר התיר לרס״פ לעדכן `last_inspected_at` מכסה גם את `green_check_at`, אין מיגרציה.
+
 ### באגים שתוקנו (נשק) — 2026-06-16
 - **החתמת רס״פ נכשלה בשקט**: `/weapons/checkout` פתוח לרס״פ, אך ה-RLS איפשר לו רק UPDATE על צ׳ שכבר משויך למסגרתו. שיוך צ׳ **פנוי** (`NULL → חייל`) לא תאם אף policy → 0 שורות, **בלי שגיאה**. תוקן ב-`0033` (RLS) + `WeaponsCheckoutPage` כעת בודק שגיאה ומריץ `.select('id')` אחרי ה-UPDATE; 0 שורות → שגיאה ברורה. INSERT של שורות כמות גם היה admin-only.
 - **פריט מעקב-כמות הציג צ׳ סינתטי**: צ׳ פנימי `__qty__…` דלף לעמודת "צ׳" (טבלת "סיכום לפי צ׳" + מודאל הפירוט ב"סיכום כמותי"). כעת `WeaponsInventoryPage` מקבץ שורות כמות לפי (פריט·חייל·מסגרת) ומציג **מספר** בעמודת צ׳ (helper `isQtySerial`).

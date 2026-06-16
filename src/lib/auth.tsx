@@ -23,7 +23,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileError, setProfileError] = useState<string | null>(null);
 
   async function loadProfile(userId: string) {
-    console.log('[auth] loadProfile start', userId);
     setProfileLoading(true);
     setProfileError(null);
     try {
@@ -41,9 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.warn('[auth] could not read token from localStorage', e);
       }
-      console.log('[auth] token from LS present?', !!accessToken);
       const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`;
-      console.log('[auth] fetching', url);
       const res = await fetch(url, {
         headers: {
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
@@ -51,7 +48,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'Accept': 'application/vnd.pgrst.object+json',
         },
       });
-      console.log('[auth] profile response status', res.status);
       if (!res.ok) {
         const text = await res.text();
         console.error('[auth] failed to load profile', res.status, text);
@@ -59,7 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfileError(`[${res.status}] ${text}`);
       } else {
         const data = await res.json();
-        console.log('[auth] loadProfile success', { active: data?.active, role: data?.role });
         setProfile(data);
       }
     } catch (e) {
@@ -73,12 +68,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    console.log('[auth] AuthProvider mount — calling getSession');
 
     (async () => {
       try {
         const { data } = await supabase.auth.getSession();
-        console.log('[auth] getSession resolved, has session:', !!data.session);
         if (cancelled) return;
         setSession(data.session);
         if (data.session) await loadProfile(data.session.user.id);

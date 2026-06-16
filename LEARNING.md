@@ -267,6 +267,13 @@ interface PdfCallArgs {
 | `0033_weapons_raspar_signing.sql` | רס״פ רשאי להחתים/לזכות/להעביר/לאפסן נשק לחיילי **המסגרת שלו** (RLS). מחליף את `weapons_serials_raspar_check` ב-`weapons_serials_raspar_update` (UPDATE — מחזיק ישן/חדש מהמסגרת או צ׳ פנוי) + `weapons_serials_raspar_insert` (שורות כמות). admin עם `weapons_serials_write`. |
 | `0034_weapons_zeroed_note.sql` | הוסיף `zeroed_note text` ל-weapons_item_serials — הערה אופציונלית באיפסון (placeholder "בטחונית צוות") **לכל פריט** (כולל פריטי כמות). מתאפס בזיכוי. |
 | `0035_weapons_returns_raspar.sql` | `weapons_returns_raspar_insert` — רס״פ רשאי לרשום זיכוי לחיילי המסגרת שלו. קודם ה-write היה admin-only (0018) → זיכוי רס״פ נכשל בשקט (היסטוריית PDF נשברה). |
+| `0036_radio_green_check.sql` | הוסיף `green_check_at` ל-`item_serials` (קשר) + שיחזר את ה-view `item_serial_status` עם העמודה. "ירוק בעיניים" למודול קשר, במקביל ל-`weapons_item_serials.green_check_at` בנשקייה. |
+
+### ירוק בעיניים — עדכון אוטומטי בכל פעולה (2026-06-16)
+דרישה: **כל** פעולת החתמה/איפסון/זיכוי תעדכן את `green_check_at` של אותו פריט — בשני המודולים.
+- **נשקייה** (`weapons_item_serials.green_check_at`): מתעדכן ל-`now` ב-`WeaponsCheckoutPage` (החתמה + שורות כמות) וב-`WeaponsTransferPage` ב-**כל** הפעולות: זיכוי (`doZikhui`), העברה (`doTransfer`), ראש-בראש (`doRosh`, שני הצדדים), ואיפסון (`doIpasoon`). אין מיגרציה (העמודה קיימת מ-0020).
+- **קשר** (`item_serials.green_check_at`, חדש ב-`0036`): `SignFormPage` מעדכן `green_check_at=now` לכל שורת צ׳ אחרי שמירת ההחתמה — **best-effort** (לא חוסם את ההחתמה אם נכשל). מוצג בעמודה חדשה "ירוק בעיניים" בדוח הצ׳ים (`UnitStockReportPage`) + ייצוא CSV; נקרא דרך ה-view `item_serial_status` (`greenCheckAt` ב-`InspectionRow`).
+- **הערה:** זיכוי בנשקייה לא מאפס את תאריכי הבדיקה (`weapon_check_at`/`green_check_at`) — אדרבה, מעכשיו הזיכוי **מעדכן** את הירוק בעיניים. `is_zeroed` עדיין מתאפס בזיכוי.
 
 ### באגים שתוקנו (נשק) — 2026-06-16
 - **החתמת רס״פ נכשלה בשקט**: `/weapons/checkout` פתוח לרס״פ, אך ה-RLS איפשר לו רק UPDATE על צ׳ שכבר משויך למסגרתו. שיוך צ׳ **פנוי** (`NULL → חייל`) לא תאם אף policy → 0 שורות, **בלי שגיאה**. תוקן ב-`0033` (RLS) + `WeaponsCheckoutPage` כעת בודק שגיאה ומריץ `.select('id')` אחרי ה-UPDATE; 0 שורות → שגיאה ברורה. INSERT של שורות כמות גם היה admin-only.

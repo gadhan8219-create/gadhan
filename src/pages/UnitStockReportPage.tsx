@@ -160,7 +160,7 @@ export default function UnitStockReportPage() {
   }
 
   function exportInspectionsCsv() {
-    const header = ['מסגרת', 'פריט', 'צ׳', 'חייל', 'מספר אישי', 'סטטוס', 'נבדק לאחרונה'];
+    const header = ['מסגרת', 'פריט', 'צ׳', 'חייל', 'מספר אישי', 'סטטוס', 'נבדק לאחרונה', 'ירוק בעיניים'];
     const lines = [header.join(',')];
     for (const r of sortedInspections) {
       const st = inspectionStatus(r.lastInspectedAt);
@@ -172,6 +172,7 @@ export default function UnitStockReportPage() {
         r.soldierPersonalNumber ?? '',
         st === 'found' ? 'נמצא' : 'דרוש בדיקה',
         r.lastInspectedAt ? new Date(r.lastInspectedAt).toLocaleString('he-IL') : '',
+        r.greenCheckAt ? new Date(r.greenCheckAt).toLocaleString('he-IL') : '',
       ].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','));
     }
     const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -300,6 +301,7 @@ export default function UnitStockReportPage() {
                     <th>חייל</th>
                     <th className="text-center">סטטוס</th>
                     <th>נבדק לאחרונה</th>
+                    <th>ירוק בעיניים</th>
                     <th className="w-24"></th>
                   </tr>
                 </thead>
@@ -307,7 +309,7 @@ export default function UnitStockReportPage() {
                   {inspectionGroups.map((g) => (
                     <Fragment key={g.unitId}>
                       <tr className="bg-slate-100">
-                        <td colSpan={7} className="font-semibold text-slate-700 px-2 py-1.5">
+                        <td colSpan={8} className="font-semibold text-slate-700 px-2 py-1.5">
                           {g.unitName}
                           <span className="text-xs font-normal text-slate-500 mr-2">({g.rows.length} צ׳ים)</span>
                         </td>
@@ -342,6 +344,11 @@ export default function UnitStockReportPage() {
                             <td className="text-xs text-slate-600">
                               {r.lastInspectedAt
                                 ? new Date(r.lastInspectedAt).toLocaleString('he-IL')
+                                : '—'}
+                            </td>
+                            <td className="text-xs text-slate-600">
+                              {r.greenCheckAt
+                                ? new Date(r.greenCheckAt).toLocaleString('he-IL')
                                 : '—'}
                             </td>
                             <td>

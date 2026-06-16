@@ -357,7 +357,7 @@ export default function WeaponsCheckoutPage() {
           const serial = line.serial.trim();
           dbUpdates.push((async () => {
             const { data, error } = await supabase.from('weapons_item_serials')
-              .update({ assigned_to_pn: activePN, assigned_to_name: activeName, assigned_at: now })
+              .update({ assigned_to_pn: activePN, assigned_to_name: activeName, assigned_at: now, green_check_at: now })
               .eq('item_id', line.itemId)
               .eq('serial_number', serial)
               .is('assigned_to_pn', null) // only assign a currently-free serial
@@ -380,6 +380,7 @@ export default function WeaponsCheckoutPage() {
                 assigned_to_pn: activePN,
                 assigned_to_name: activeName,
                 assigned_at: now,
+                green_check_at: now,
               });
               if (error) throw new Error(error.message);
             })());

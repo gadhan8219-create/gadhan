@@ -126,6 +126,7 @@ export interface ItemSerial {
   serial_number: string;
   last_inspected_at: string | null;
   last_inspected_by: string | null;
+  green_check_at: string | null;  // "ירוק בעיניים" — bumped on every signing/return
   created_at: string;
 }
 
@@ -134,6 +135,7 @@ export interface ItemSerialStatus {
   item_id: string;
   serial_number: string;
   last_inspected_at: string | null;
+  green_check_at: string | null;
   current_unit_id: string | null;
   current_soldier_id: string | null;
 }

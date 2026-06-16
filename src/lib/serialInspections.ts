@@ -16,6 +16,8 @@ export interface InspectionRow {
   soldierName: string | null;
   soldierPersonalNumber: string | null;
   lastInspectedAt: string | null;
+  /** "ירוק בעיניים" — bumped on every signing/return. */
+  greenCheckAt: string | null;
 }
 
 /** Derive status: "found" if inspected within the last week, else "needs-inspection". */
@@ -35,7 +37,7 @@ export function inspectionStatus(lastInspectedAt: string | null): InspectionStat
 export async function loadUnitInspectionReport(unitId: string | null): Promise<InspectionRow[]> {
   let query = supabase
     .from('item_serial_status')
-    .select('serial_id, item_id, serial_number, current_unit_id, current_soldier_id, last_inspected_at')
+    .select('serial_id, item_id, serial_number, current_unit_id, current_soldier_id, last_inspected_at, green_check_at')
     .not('current_unit_id', 'is', null);
   if (unitId) query = query.eq('current_unit_id', unitId);
   const { data, error } = await query;
@@ -47,6 +49,7 @@ export async function loadUnitInspectionReport(unitId: string | null): Promise<I
     current_unit_id: string;
     current_soldier_id: string | null;
     last_inspected_at: string | null;
+    green_check_at: string | null;
   }>;
 
   const itemIds = Array.from(new Set(rows.map((r) => r.item_id)));
@@ -82,6 +85,7 @@ export async function loadUnitInspectionReport(unitId: string | null): Promise<I
     soldierName: r.current_soldier_id ? (soldier.get(r.current_soldier_id)?.name ?? null) : null,
     soldierPersonalNumber: r.current_soldier_id ? (soldier.get(r.current_soldier_id)?.pn ?? null) : null,
     lastInspectedAt: r.last_inspected_at,
+    greenCheckAt: r.green_check_at,
   }));
 }
 

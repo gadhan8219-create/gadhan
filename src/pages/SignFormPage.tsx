@@ -251,6 +251,20 @@ export default function SignFormPage() {
       );
       if (itemsErr) throw itemsErr;
 
+      // Bump "ירוק בעיניים" (green_check_at) for each serial handed over.
+      // Best-effort, non-blocking: a green-check RLS edge case must never fail
+      // an actual signing. Only existing item_serials rows are touched.
+      const greenNow = new Date().toISOString();
+      const serialLines = valid.filter((l) => l.serialNumber.trim());
+      if (serialLines.length) {
+        await Promise.all(serialLines.map((l) =>
+          supabase.from('item_serials')
+            .update({ green_check_at: greenNow })
+            .eq('item_id', l.itemId)
+            .eq('serial_number', l.serialNumber.trim()),
+        )).catch(() => { /* secondary side-effect; ignore */ });
+      }
+
       await logAudit({ action: 'signing.signing', targetType: 'signing', targetId: signing.id, details: { soldier_id: finalSoldierId, items: valid.length } });
 
       // Show success immediately

@@ -270,8 +270,9 @@ export default function WeaponsTransferPage() {
       }
 
       // 2. Clear assignments in DB — surface RLS no-ops (0 rows + no error)
+      const now = new Date().toISOString();
       const { data: cleared, error: clrErr } = await supabase.from('weapons_item_serials')
-        .update({ assigned_to_pn: null, assigned_to_name: null, assigned_at: null, is_zeroed: false })
+        .update({ assigned_to_pn: null, assigned_to_name: null, assigned_at: null, is_zeroed: false, green_check_at: now })
         .in('id', ids)
         .select('id');
       if (clrErr) throw new Error(clrErr.message);
@@ -350,8 +351,9 @@ export default function WeaponsTransferPage() {
     if (conflict) { setError(`חייל היעד כבר מחזיק: ${conflict.item_name}`); return; }
     setLoading(true); setError(null);
     try {
+      const now = new Date().toISOString();
       const { data: moved, error: mvErr } = await supabase.from('weapons_item_serials')
-        .update({ assigned_to_pn: dstSoldier.personal_number, assigned_to_name: dstSoldier.full_name, assigned_at: new Date().toISOString() })
+        .update({ assigned_to_pn: dstSoldier.personal_number, assigned_to_name: dstSoldier.full_name, assigned_at: now, green_check_at: now })
         .in('id', rows.map((r) => r.id))
         .select('id');
       if (mvErr) throw new Error(mvErr.message);
@@ -386,13 +388,13 @@ export default function WeaponsTransferPage() {
       const now = new Date().toISOString();
       for (const p of toSwap) {
         const { data: a, error: aErr } = await supabase.from('weapons_item_serials')
-          .update({ assigned_to_pn: dstSoldier.personal_number, assigned_to_name: dstSoldier.full_name, assigned_at: now })
+          .update({ assigned_to_pn: dstSoldier.personal_number, assigned_to_name: dstSoldier.full_name, assigned_at: now, green_check_at: now })
           .eq('id', p.srcRow.id)
           .select('id');
         if (aErr) throw new Error(aErr.message);
         if (!a || a.length === 0) throw new Error(`לא ניתן לבצע ראש בראש על ${p.itemName} — ייתכן שאין הרשאה למסגרת זו`);
         const { data: b, error: bErr } = await supabase.from('weapons_item_serials')
-          .update({ assigned_to_pn: srcSoldier.personal_number, assigned_to_name: srcSoldier.full_name, assigned_at: now })
+          .update({ assigned_to_pn: srcSoldier.personal_number, assigned_to_name: srcSoldier.full_name, assigned_at: now, green_check_at: now })
           .eq('id', p.dstRow.id)
           .select('id');
         if (bErr) throw new Error(bErr.message);
@@ -414,7 +416,7 @@ export default function WeaponsTransferPage() {
       for (const r of rows) {
         const note = zeroNotes[r.serial_number]?.trim() || null;
         const { error } = await supabase.from('weapons_item_serials')
-          .update({ is_zeroed: true, zeroed_at: now, zeroed_note: note })
+          .update({ is_zeroed: true, zeroed_at: now, zeroed_note: note, green_check_at: now })
           .eq('id', r.id);
         if (error) throw new Error(error.message);
       }

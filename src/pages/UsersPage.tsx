@@ -3,6 +3,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { logAudit } from '../lib/audit';
+import { validatePassword, PASSWORD_RULE_TEXT } from '../lib/password';
 import type { Profile, Role, Unit } from '../lib/database.types';
 
 // supabase.functions.invoke wraps every non-2xx response in a generic
@@ -78,8 +79,9 @@ export default function UsersPage() {
     if (!USERNAME_RE.test(username)) {
       return setFeedback({ type: 'error', msg: 'שם משתמש: אנגלית/ספרות בלבד, 3–32 תווים (מותרים גם . _ -)' });
     }
-    if (form.password.length < 6) {
-      return setFeedback({ type: 'error', msg: 'סיסמה חייבת להיות לפחות 6 תווים' });
+    const weak = validatePassword(form.password);
+    if (weak) {
+      return setFeedback({ type: 'error', msg: weak });
     }
     if (form.role === 'raspar' && !form.unit_id) {
       return setFeedback({ type: 'error', msg: 'רס"פ חייב להיות משויך למסגרת' });
@@ -163,7 +165,8 @@ export default function UsersPage() {
           </div>
           <div>
             <label className="label">סיסמה *</label>
-            <input type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={6} />
+            <input type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
+            <p className="text-xs text-slate-400 mt-1">{PASSWORD_RULE_TEXT}</p>
           </div>
           <div>
             <label className="label">תפקיד *</label>

@@ -16,6 +16,7 @@ export interface Profile {
   phone: string | null;
   personal_number: string | null;
   active: boolean;
+  password_changed_at: string | null;
   created_at: string;
 }
 

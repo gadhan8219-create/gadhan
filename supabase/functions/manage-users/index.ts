@@ -71,6 +71,10 @@ serve(async (req) => {
       if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
         return jsonResponse({ ok: false, error: 'שם המשתמש חייב להיות אנגלית/ספרות בלבד (3–32 תווים, מותרים גם . _ -)' }, 400);
       }
+      // Password strength — mirror src/lib/password.ts (length ≥ 8, letter + digit).
+      if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+        return jsonResponse({ ok: false, error: 'הסיסמה חייבת להכיל לפחות 8 תווים, הכוללים אות וספרה' }, 400);
+      }
 
       // Uniqueness check up front (the unique index will also block, but this gives a clear error).
       const { data: existing } = await admin

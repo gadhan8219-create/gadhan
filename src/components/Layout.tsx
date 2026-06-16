@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { useIdleLogout } from '../lib/useIdleLogout';
 
 interface NavLeaf { to: string; label: string; end?: boolean; admin?: boolean }
 interface NavSection { id: string; label: string; items: NavLeaf[]; admin?: boolean }
@@ -86,6 +87,9 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = profile?.role === 'admin';
+
+  // Auto sign-out after 30 minutes of inactivity.
+  useIdleLogout();
 
   const [open, setOpen] = useState<string | null>(() => sectionOf(location.pathname));
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -179,8 +183,12 @@ export default function Layout() {
         <div className="px-4 py-4 border-t border-slate-800 text-sm">
           <div className="font-medium">{profile?.full_name}</div>
           <div className="text-xs text-slate-400 mb-3">{profile?.role === 'admin' ? 'מנהל מערכת' : 'רס"פ'}</div>
-          <button onClick={async () => { await signOut(); navigate('/login', { replace: true }); }}
-            className="text-xs text-slate-300 hover:text-white">התנתק</button>
+          <div className="flex gap-3">
+            <button onClick={() => { setDrawerOpen(false); navigate('/change-password'); }}
+              className="text-xs text-slate-300 hover:text-white">שנה סיסמה</button>
+            <button onClick={async () => { await signOut(); navigate('/login', { replace: true }); }}
+              className="text-xs text-slate-300 hover:text-white">התנתק</button>
+          </div>
         </div>
       </aside>
 

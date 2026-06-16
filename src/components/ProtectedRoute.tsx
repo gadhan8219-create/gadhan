@@ -1,6 +1,8 @@
 import { Navigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useAuth } from '../lib/auth';
+import { isPasswordExpired } from '../lib/password';
+import ChangePasswordPage from '../pages/ChangePasswordPage';
 
 export default function ProtectedRoute({
   children,
@@ -56,6 +58,10 @@ export default function ProtectedRoute({
         </div>
       </div>
     );
+  }
+  if (isPasswordExpired(profile.password_changed_at)) {
+    // Password older than 60 days — block everything until it's changed.
+    return <ChangePasswordPage forced />;
   }
   if (requireAdmin && profile.role !== 'admin') {
     return <Navigate to="/" replace />;

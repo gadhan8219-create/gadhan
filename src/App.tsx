@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 import DashboardPage from './pages/DashboardPage';
 // Radio pages
 import SignFormPage from './pages/SignFormPage';
@@ -47,6 +48,7 @@ export default function App() {
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         {/* Dashboard */}
         <Route index element={<DashboardPage />} />
+        <Route path="change-password" element={<ChangePasswordPage />} />
 
         {/* ── קשר (Radio) ── */}
         <Route path="sign" element={<SignFormPage />} />

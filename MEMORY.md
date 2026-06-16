@@ -43,3 +43,5 @@
 | תאריך | מה נעשה |
 |-------|---------|
 | 2026-06-10 | יצירת פרויקט gadhan-all — מיגרציה מ-3 פרויקטים |
+| 2026-06-16 | **Security hardening:** ניתוק אוטומטי 30 דק' (`useIdleLogout`), תפוגת סיסמה 60 יום (מיגרציה 0029 + `password.ts` + `ChangePasswordPage`), חוזק סיסמה (8+אות+ספרה, 3 שכבות), באקטים פרטיים + signed URLs (0028), Security headers + CSP ב-`vercel.json`, Auth rate limiting. רולבק של ניסיון email-OTP. ראה LEARNING.md סעיף 16. |
+| 2026-06-16 | **תצוגת מסמכים inline:** `DocViewerModal` — קבלות דלק (יומן תדלוק) ומסמכי רכב יר״מ מוצגים בעמוד במקום הורדה. CSP `frame-src` ל-PDF. ניקוי מסך login (הסרת כותרת + הגדלת לוגו). ראה LEARNING.md סעיף 17. |

@@ -37,6 +37,7 @@ interface Profile {
   phone: string;
   personal_number: string;
   active: boolean;
+  password_changed_at: string | null; // מיגרציה 0029 — לחישוב תפוגת סיסמה (60 יום)
 }
 ```
 
@@ -54,6 +55,8 @@ interface Profile {
 // דף למנהל בלבד:
 <ProtectedRoute requireAdmin><AdminPage /></ProtectedRoute>
 ```
+
+`ProtectedRoute` אוכף בנוסף (לפי הסדר): מאומת → `active` → **תפוגת סיסמה** (אם פגה, מציג `<ChangePasswordPage forced />` במקום הדף) → `requireAdmin`.
 
 ---
 
@@ -486,7 +489,7 @@ Lib: `lib/attendance.ts` (כולל `todayISO()`, `listStatuses`, `getAttendanceF
 | `vehicle_types` | סוגי רכב — נזרע: `יר״מ`, `לבן`, `צבאי` |
 | `vehicles` | `car_plate, unit_id, type_id, documents jsonb, next_test_date, next_test_range` |
 
-- `documents` = מערך `{ name, url, uploaded_at }`. קבצים ב-bucket `vehicle-docs` (ציבורי, מודל אבטחה של path לא-נחיש, כמו `fuel-receipts`).
+- `documents` = מערך `{ name, path, uploaded_at, url? }`. קבצים ב-bucket `vehicle-docs` — **פרטי** מאז מיגרציה 0028. קריאה דרך signed URL (`lib/storage.ts`). שדה `url` נשאר רק לשורות ישנות (legacy public URL). תצוגה inline דרך `DocViewerModal` (ראה סעיף 17).
 - `next_test_range` = קילומטרז' לבדיקה הבאה (חלופה ל-`next_test_date`).
 
 ### Pages (תחת /vehicles)
@@ -525,4 +528,57 @@ Lib: `lib/vehicles.ts` — `listVehicles`, `createVehicle`, `updateVehicle`, `de
 
 ---
 
-*עודכן: 2026-06-14 (bunker + personnel + vehicles + dashboard + PWA; הסרת כל האימוג'ים פרט לגלגל השיניים)*
+## 16. אבטחה (Security Hardening)
+
+מיגרציות `0028` (privatize buckets + RLS) ו-`0029_password_policy.sql`.
+
+### שכבות אבטחה במערכת
+| שכבה | מימוש | קובץ |
+|------|--------|------|
+| **ניתוק אוטומטי בחוסר פעילות** | אחרי 30 דק' ללא פעילות → `signOut()` + ניווט ל-`/login`. עוקב אחרי mouse/keyboard/touch/scroll, מסונכרן בין טאבים דרך localStorage, נבדק מחדש ב-`visibilitychange`. | `lib/useIdleLogout.ts` (מורכב פעם אחת ב-`Layout.tsx`) |
+| **תפוגת סיסמה כל 60 יום** | `password_changed_at` בפרופיל. `isPasswordExpired()` בודק > 60 יום. `ProtectedRoute` כופה החלפה (`forced`). בטוח גם לפני המיגרציה — `null` ⇒ לא פג. | `lib/password.ts`, `ProtectedRoute.tsx`, `ChangePasswordPage.tsx` |
+| **חוזק סיסמה** | מינ' 8 תווים + אות + ספרה. נאכף ב-3 שכבות: טופס React, edge function `manage-users` (שרת), ואופציונלית Supabase Password policy. | `lib/password.ts` (`validatePassword`, `PASSWORD_RULE_TEXT`), `UsersPage.tsx`, `manage-users/index.ts` |
+| **באקטים פרטיים** | `signing-pdfs`, `vehicle-docs`, `fuel-receipts` פרטיים (0028). קריאה רק דרך signed URL מאומת (TTL שעה). | `lib/storage.ts` (`signedUrl`, `objectPath`) |
+| **Security Headers** | CSP, HSTS, X-Content-Type-Options, X-Frame-Options=DENY, Referrer-Policy, Permissions-Policy. | `vercel.json` → `headers` |
+| **Rate Limiting** | Supabase Auth: "sign-ups and sign-ins" הונמך ל-~10 לכל 5 דק' לכל IP (הגנת brute-force). מוגדר ב-Dashboard, לא בקוד. | Supabase Dashboard → Auth → Rate Limits |
+
+### `mark_password_changed()` (RPC)
+`SECURITY DEFINER`, מעדכן `password_changed_at = now()` ל-`auth.uid()`. נקראת אחרי `updateUser({ password })` ב-`ChangePasswordPage` (לא-פאטאלי — עטוף ב-try/catch).
+
+### CSP (Content-Security-Policy) — ב-`vercel.json`
+```
+default-src 'self';
+script-src 'self';
+style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+font-src 'self' https://fonts.gstatic.com data:;
+img-src 'self' data: blob: https://*.supabase.co;
+connect-src 'self' https://*.supabase.co wss://*.supabase.co;
+frame-src 'self' blob: https://*.supabase.co;   ← נדרש להצגת PDF ב-iframe
+worker-src 'self' blob:; manifest-src 'self';
+object-src 'none'; base-uri 'self'; form-action 'self';
+frame-ancestors 'none'; upgrade-insecure-requests
+```
+**מלכודת:** הוספת אינטגרציה חיצונית חדשה (CDN, API) דורשת עדכון ה-CSP, אחרת הדפדפן יחסום (`Refused to connect/load/frame`). אין `unsafe-eval` ואין inline scripts — ה-build מייצר רק `/assets/*.js` חיצוני.
+
+---
+
+## 17. תצוגת מסמכים inline (DocViewerModal)
+
+`src/components/DocViewerModal.tsx` — קומפוננטה משותפת להצגת קבצים מבאקט פרטי **בתוך העמוד** במקום להוריד אותם.
+
+- מקבלת `bucket`, `pathOrUrl`, `title?`, `downloadName?`, `onClose`.
+- חותמת signed URL **בלי** download disposition (כדי שהדפדפן יציג, לא יוריד).
+- מזהה PDF (`.pdf`) → `<iframe>`; אחרת תמונה → `<img>`.
+- כפתור "הורד" (signed URL נפרד עם download) + סגירה ב-Esc / לחיצה ברקע.
+
+**צרכנים:**
+| דף | באקט | תוכן |
+|----|------|------|
+| `DelekAdminPage` (יומן תדלוק) | `fuel-receipts` | קבלות (JPEG) — "צפה" פותח modal |
+| `VehicleYrmPage` (רכב יר״מ) | `vehicle-docs` | טופס יר״מ / רשיון (תמונה או PDF) |
+
+**מלכודת:** הצגת PDF ב-iframe מצריכה `frame-src https://*.supabase.co blob:` ב-CSP (ראה סעיף 16). תמונות עובדות ממילא דרך `img-src`.
+
+---
+
+*עודכן: 2026-06-16 (Security hardening: idle logout, password expiry 60d, password strength, private buckets, CSP/headers, rate limiting; DocViewerModal — תצוגת מסמכים inline; הסרת כותרת login + הגדלת לוגו)*

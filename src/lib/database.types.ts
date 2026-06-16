@@ -74,6 +74,7 @@ export interface WeaponsItemSerial {
   assigned_at:      string | null;
   is_zeroed:        boolean;        // true = passed איפסון (stays assigned)
   zeroed_at:        string | null;
+  zeroed_note:      string | null;  // optional note captured at איפסון (e.g. בטחונית צוות)
   weapon_check_at:  string | null;  // last "בדיקת נשק/אופטיקה"
   green_check_at:   string | null;  // last "ירוק בעיניים"
   created_at: string;

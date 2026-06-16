@@ -264,6 +264,19 @@ interface PdfCallArgs {
 | קובץ | תוכן |
 |------|------|
 | `0016_weapons_zeroed_flag.sql` | הוסיף `is_zeroed boolean`, `zeroed_at timestamptz` לטבלת weapons_item_serials |
+| `0033_weapons_raspar_signing.sql` | רס״פ רשאי להחתים/לזכות/להעביר/לאפסן נשק לחיילי **המסגרת שלו** (RLS). מחליף את `weapons_serials_raspar_check` ב-`weapons_serials_raspar_update` (UPDATE — מחזיק ישן/חדש מהמסגרת או צ׳ פנוי) + `weapons_serials_raspar_insert` (שורות כמות). admin עם `weapons_serials_write`. |
+| `0034_weapons_zeroed_note.sql` | הוסיף `zeroed_note text` ל-weapons_item_serials — הערה אופציונלית באיפסון (placeholder "בטחונית צוות"). מתאפס בזיכוי. |
+| `0035_weapons_returns_raspar.sql` | `weapons_returns_raspar_insert` — רס״פ רשאי לרשום זיכוי לחיילי המסגרת שלו. קודם ה-write היה admin-only (0018) → זיכוי רס״פ נכשל בשקט (היסטוריית PDF נשברה). |
+
+### באגים שתוקנו (נשק) — 2026-06-16
+- **החתמת רס״פ נכשלה בשקט**: `/weapons/checkout` פתוח לרס״פ, אך ה-RLS איפשר לו רק UPDATE על צ׳ שכבר משויך למסגרתו. שיוך צ׳ **פנוי** (`NULL → חייל`) לא תאם אף policy → 0 שורות, **בלי שגיאה**. תוקן ב-`0033` (RLS) + `WeaponsCheckoutPage` כעת בודק שגיאה ומריץ `.select('id')` אחרי ה-UPDATE; 0 שורות → שגיאה ברורה. INSERT של שורות כמות גם היה admin-only.
+- **פריט מעקב-כמות הציג צ׳ סינתטי**: צ׳ פנימי `__qty__…` דלף לעמודת "צ׳" (טבלת "סיכום לפי צ׳" + מודאל הפירוט ב"סיכום כמותי"). כעת `WeaponsInventoryPage` מקבץ שורות כמות לפי (פריט·חייל·מסגרת) ומציג **מספר** בעמודת צ׳ (helper `isQtySerial`).
+
+### אותו דפוס שקט נסרק בשאר זרימות הנשק (2026-06-16)
+`/weapons/transfer` פתוח גם הוא לרס״פ. כל הפעולות שם נכתבו ב-`await supabase…update/insert(...)` **בלי בדיקת `error`** ובלי `.select('id')` — אותו class של כשל שקט. תוקן ב-`WeaponsTransferPage`:
+- **זיכוי (`doZikhui`)**: ה-INSERT ל-`weapons_returns` היה admin-only (תוקן ב-`0035`) + עכשיו בודק שגיאה; ה-UPDATE שמנקה שיוך מריץ `.select('id')` ובודק שכל ה-ids עודכנו.
+- **העברה (`doTransfer`)** ו-**ראש בראש (`doRosh`)**: כל UPDATE כעת `.select('id')` + בדיקת 0 שורות → שגיאה ברורה.
+- **נסרקו ונמצאו תקינים**: `markCheck` / `toggleExempt` (Inventory) — `toggleExempt` (כתיבה ל-`weapons_items`, admin-only) חסום ב-UI ל-`{isAdmin && …}`; `markCheck` בודק שגיאה ומוגבל ב-UI ל-`canMark` (מסגרת הרס״פ). `saveEditSoldier` (Checkout) — `soldiers` יש `soldiers_raspar_update` למסגרת הרס״פ, ובודק שגיאה.
 
 ---
 

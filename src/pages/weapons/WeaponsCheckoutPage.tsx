@@ -344,36 +344,45 @@ export default function WeaponsCheckoutPage() {
     try {
       const now = new Date().toISOString();
 
-      // 1. Save assignments to DB
-      const dbUpdates: PromiseLike<unknown>[] = [];
+      // 1. Save assignments to DB. Errors are surfaced (not swallowed): an RLS
+      //    block on an UPDATE returns success with 0 rows, so we .select() the
+      //    affected row and treat an empty result as a failure.
+      const dbUpdates: Promise<void>[] = [];
       for (const line of validLines) {
         const item = weaponItems.find((i) => i.id === line.itemId);
         if (!item) continue;
 
         if (item.has_serials && line.serial.trim()) {
           // Serial item → assign the specific serial to the soldier
-          dbUpdates.push(
-            supabase.from('weapons_item_serials')
+          const serial = line.serial.trim();
+          dbUpdates.push((async () => {
+            const { data, error } = await supabase.from('weapons_item_serials')
               .update({ assigned_to_pn: activePN, assigned_to_name: activeName, assigned_at: now })
               .eq('item_id', line.itemId)
-              .eq('serial_number', line.serial.trim())
-              .then()
-          );
+              .eq('serial_number', serial)
+              .is('assigned_to_pn', null) // only assign a currently-free serial
+              .select('id');
+            if (error) throw new Error(error.message);
+            if (!data || data.length === 0) {
+              throw new Error(`לא ניתן להחתים ${item.name} (${serial}) — ייתכן שאין הרשאה למסגרת זו או שהפריט כבר משויך`);
+            }
+          })());
         } else if (!item.has_serials) {
           // Non-serial item → insert one synthetic serial row per unit.
           // Serial is prefixed __qty__ so the rest of the UI can distinguish these
           // from real serial items without a schema change.
           const qty = parseInt(line.quantity) || 1;
           for (let i = 0; i < qty; i++) {
-            dbUpdates.push(
-              supabase.from('weapons_item_serials').insert({
+            dbUpdates.push((async () => {
+              const { error } = await supabase.from('weapons_item_serials').insert({
                 item_id: line.itemId,
                 serial_number: `__qty__${crypto.randomUUID().replace(/-/g, '')}`,
                 assigned_to_pn: activePN,
                 assigned_to_name: activeName,
                 assigned_at: now,
-              }).then()
-            );
+              });
+              if (error) throw new Error(error.message);
+            })());
           }
         }
       }

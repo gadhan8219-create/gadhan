@@ -190,6 +190,8 @@ export default function WeaponsTransferPage() {
   const [zSerial,  setZSerial]  = useState('');
 
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  // איפסון: optional per-item note (e.g. בטחונית צוות), keyed by serial_number.
+  const [zeroNotes, setZeroNotes] = useState<Record<string, string>>({});
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
@@ -232,6 +234,7 @@ export default function WeaponsTransferPage() {
     setSrcSoldier(null); setDstSoldier(null);
     setZItemId(''); setZSerialQ(''); setZSerial('');
     setChecked(new Set());
+    setZeroNotes({});
     setSuccess(null); setError(null);
   }
 
@@ -253,7 +256,7 @@ export default function WeaponsTransferPage() {
       //    the only trace that the soldier ever held these items).
       if (pdfCtx) {
         const { soldier, credited_items } = pdfCtx;
-        await supabase.from('weapons_returns').insert(
+        const { error: retErr } = await supabase.from('weapons_returns').insert(
           credited_items.map((it) => ({
             soldier_pn:   soldier.personal_number,
             soldier_name: soldier.full_name,
@@ -263,12 +266,18 @@ export default function WeaponsTransferPage() {
             performed_by: profile?.id ?? null,
           })),
         );
+        if (retErr) throw new Error(`רישום הזיכוי נכשל — ${retErr.message} (ייתכן שאין הרשאה למסגרת זו)`);
       }
 
-      // 2. Clear assignments in DB
-      await supabase.from('weapons_item_serials')
+      // 2. Clear assignments in DB — surface RLS no-ops (0 rows + no error)
+      const { data: cleared, error: clrErr } = await supabase.from('weapons_item_serials')
         .update({ assigned_to_pn: null, assigned_to_name: null, assigned_at: null, is_zeroed: false })
-        .in('id', ids);
+        .in('id', ids)
+        .select('id');
+      if (clrErr) throw new Error(clrErr.message);
+      if (!cleared || cleared.length < ids.length) {
+        throw new Error('לא ניתן לזכות חלק מהפריטים — ייתכן שאין הרשאה למסגרת זו');
+      }
 
       // 3. Show success immediately — PDFs fire in background
       setSuccess(`${ids.length} פריטים הוחזרו לגדוד`);
@@ -341,9 +350,14 @@ export default function WeaponsTransferPage() {
     if (conflict) { setError(`חייל היעד כבר מחזיק: ${conflict.item_name}`); return; }
     setLoading(true); setError(null);
     try {
-      await supabase.from('weapons_item_serials')
+      const { data: moved, error: mvErr } = await supabase.from('weapons_item_serials')
         .update({ assigned_to_pn: dstSoldier.personal_number, assigned_to_name: dstSoldier.full_name, assigned_at: new Date().toISOString() })
-        .in('id', rows.map((r) => r.id));
+        .in('id', rows.map((r) => r.id))
+        .select('id');
+      if (mvErr) throw new Error(mvErr.message);
+      if (!moved || moved.length < rows.length) {
+        throw new Error('לא ניתן להעביר חלק מהפריטים — ייתכן שאין הרשאה למסגרת זו');
+      }
       setSuccess(`${rows.length} פריטים הועברו ל-${dstSoldier.full_name}`);
       await loadAll(); resetForms();
     } catch (e) { setError((e as Error).message); }
@@ -371,12 +385,18 @@ export default function WeaponsTransferPage() {
     try {
       const now = new Date().toISOString();
       for (const p of toSwap) {
-        await supabase.from('weapons_item_serials')
+        const { data: a, error: aErr } = await supabase.from('weapons_item_serials')
           .update({ assigned_to_pn: dstSoldier.personal_number, assigned_to_name: dstSoldier.full_name, assigned_at: now })
-          .eq('id', p.srcRow.id);
-        await supabase.from('weapons_item_serials')
+          .eq('id', p.srcRow.id)
+          .select('id');
+        if (aErr) throw new Error(aErr.message);
+        if (!a || a.length === 0) throw new Error(`לא ניתן לבצע ראש בראש על ${p.itemName} — ייתכן שאין הרשאה למסגרת זו`);
+        const { data: b, error: bErr } = await supabase.from('weapons_item_serials')
           .update({ assigned_to_pn: srcSoldier.personal_number, assigned_to_name: srcSoldier.full_name, assigned_at: now })
-          .eq('id', p.dstRow.id);
+          .eq('id', p.dstRow.id)
+          .select('id');
+        if (bErr) throw new Error(bErr.message);
+        if (!b || b.length === 0) throw new Error(`לא ניתן לבצע ראש בראש על ${p.itemName} — ייתכן שאין הרשאה למסגרת זו`);
       }
       setSuccess(`ראש בראש בוצע ל-${toSwap.length} פריטים`);
       await loadAll(); resetForms();
@@ -389,9 +409,15 @@ export default function WeaponsTransferPage() {
     if (!rows.length) { setError('לא נבחרו פריטים'); return; }
     setLoading(true); setError(null);
     try {
-      await supabase.from('weapons_item_serials')
-        .update({ is_zeroed: true, zeroed_at: new Date().toISOString() })
-        .in('id', rows.map((r) => r.id));
+      const now = new Date().toISOString();
+      // Per-item note (e.g. בטחונית צוות) → update each row with its own note.
+      for (const r of rows) {
+        const note = zeroNotes[r.serial_number]?.trim() || null;
+        const { error } = await supabase.from('weapons_item_serials')
+          .update({ is_zeroed: true, zeroed_at: now, zeroed_note: note })
+          .eq('id', r.id);
+        if (error) throw new Error(error.message);
+      }
       setSuccess(`${rows.length} פריטים אופסנו אצל ${srcSoldier?.full_name}`);
       await loadAll(); resetForms();
     } catch (e) { setError((e as Error).message); }
@@ -668,22 +694,38 @@ export default function WeaponsTransferPage() {
           {srcSerials.length > 0 && (
             <>
               <div className="space-y-2">
-                {srcSerials.map((r) => (
-                  <label key={r.serial_number}
-                    className={`flex items-center gap-3 p-3 rounded-lg border transition ${
-                      r.is_zeroed ? 'border-orange-200 bg-orange-50 cursor-default' :
-                      checked.has(r.serial_number) ? 'border-orange-400 bg-orange-50 cursor-pointer' : 'border-slate-200 hover:border-slate-300 cursor-pointer'
-                    }`}>
-                    <input type="checkbox" className="accent-orange-500 w-4 h-4"
-                      checked={checked.has(r.serial_number)} disabled={r.is_zeroed}
-                      onChange={() => toggleCheck(r.serial_number)} />
-                    <span className="flex-1 text-sm font-medium">{r.item_name}</span>
-                    {!isQtySerial(r.serial_number) && (
-                      <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
-                    )}
-                    {r.is_zeroed && <span className="badge bg-orange-100 text-orange-700 text-xs">מאופסן</span>}
-                  </label>
-                ))}
+                {srcSerials.map((r) => {
+                  const isReal = !isQtySerial(r.serial_number);
+                  const isChecked = checked.has(r.serial_number);
+                  return (
+                    <div key={r.serial_number}
+                      className={`rounded-lg border transition ${
+                        r.is_zeroed ? 'border-orange-200 bg-orange-50' :
+                        isChecked ? 'border-orange-400 bg-orange-50' : 'border-slate-200 hover:border-slate-300'
+                      }`}>
+                      <label className={`flex items-center gap-3 p-3 ${r.is_zeroed ? 'cursor-default' : 'cursor-pointer'}`}>
+                        <input type="checkbox" className="accent-orange-500 w-4 h-4"
+                          checked={isChecked} disabled={r.is_zeroed}
+                          onChange={() => toggleCheck(r.serial_number)} />
+                        <span className="flex-1 text-sm font-medium">{r.item_name}</span>
+                        {isReal && (
+                          <span className="font-mono text-xs text-slate-500" dir="ltr">{r.serial_number}</span>
+                        )}
+                        {r.is_zeroed && <span className="badge bg-orange-100 text-orange-700 text-xs">מאופסן</span>}
+                      </label>
+                      {isReal && isChecked && !r.is_zeroed && (
+                        <div className="px-3 pb-3">
+                          <input
+                            className="input text-sm"
+                            placeholder="בטחונית צוות"
+                            value={zeroNotes[r.serial_number] ?? ''}
+                            onChange={(e) => setZeroNotes((p) => ({ ...p, [r.serial_number]: e.target.value }))}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <button type="button" disabled={loading || !checked.size} onClick={doIpasoon}
                 className="btn-primary w-full !bg-orange-500 hover:!bg-orange-600 disabled:opacity-50">

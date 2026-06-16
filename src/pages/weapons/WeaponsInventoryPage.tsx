@@ -25,6 +25,10 @@ interface DetailModal {
   rows: SerialRow[];
 }
 
+// Synthetic serial assigned to non-serial (quantity-tracked) items. These have
+// no real צ׳ — they should be displayed as a count, never as the raw serial.
+const isQtySerial = (s: string) => s.startsWith('__qty__');
+
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 type CheckStatus = 'exempt' | 'due' | 'ok';
 function checkStatus(dateStr: string | null, exempt: boolean): CheckStatus {
@@ -218,6 +222,24 @@ export default function WeaponsInventoryPage() {
     return a.itemName.localeCompare(b.itemName, 'he') ||
            a.serial_number.localeCompare(b.serial_number);
   });
+
+  // Collapse synthetic qty rows: one row per (item, soldier, unit) showing a
+  // count in the צ׳ column instead of the internal __qty__ serial string.
+  interface DisplayRow extends SerialView { quantity: number; isQty: boolean; }
+  const displayRows: DisplayRow[] = [];
+  const qtyIndex = new Map<string, DisplayRow>();
+  for (const r of serialRows) {
+    if (isQtySerial(r.serial_number)) {
+      const key = `${r.item_id}::${r.assigned_to_pn}::${r.unit_id ?? ''}`;
+      const ex = qtyIndex.get(key);
+      if (ex) { ex.quantity += 1; continue; }
+      const dr: DisplayRow = { ...r, quantity: 1, isQty: true };
+      qtyIndex.set(key, dr);
+      displayRows.push(dr);
+    } else {
+      displayRows.push({ ...r, quantity: 1, isQty: false });
+    }
+  }
 
   // Small reusable cell for a single check column
   function CheckCell({ r, field }: { r: SerialView; field: 'weapon' | 'green' }) {
@@ -442,28 +464,36 @@ export default function WeaponsInventoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {serialRows.map((r) => (
+                  {displayRows.map((r) => (
                     <tr key={r.id}>
                       <td className="text-sm text-slate-600">{r.unitName}</td>
                       <td className="font-medium">{r.itemName}</td>
-                      <td className="font-mono" dir="ltr">{r.serial_number}</td>
+                      <td className={r.isQty ? '' : 'font-mono'} dir={r.isQty ? undefined : 'ltr'}>
+                        {r.isQty ? r.quantity : r.serial_number}
+                      </td>
                       <td className="whitespace-nowrap">{r.assigned_to_name ?? r.assigned_to_pn}</td>
-                      <td className="text-center"><CheckCell r={r} field="weapon" /></td>
-                      <td className="text-center"><CheckCell r={r} field="green" /></td>
+                      <td className="text-center">
+                        {r.isQty ? <span className="text-slate-300">—</span> : <CheckCell r={r} field="weapon" />}
+                      </td>
+                      <td className="text-center">
+                        {r.isQty ? <span className="text-slate-300">—</span> : <CheckCell r={r} field="green" />}
+                      </td>
                       {isAdmin && (
                         <td className="text-center">
-                          <input
-                            type="checkbox"
-                            className="w-4 h-4 accent-emerald-600 cursor-pointer"
-                            checked={r.noCheckRequired}
-                            onChange={() => { const it = itemById.get(r.item_id); if (it) toggleExempt(it); }}
-                            title="פריט לא דורש בדיקה"
-                          />
+                          {r.isQty ? <span className="text-slate-300">—</span> : (
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                              checked={r.noCheckRequired}
+                              onChange={() => { const it = itemById.get(r.item_id); if (it) toggleExempt(it); }}
+                              title="פריט לא דורש בדיקה"
+                            />
+                          )}
                         </td>
                       )}
                     </tr>
                   ))}
-                  {serialRows.length === 0 && (
+                  {displayRows.length === 0 && (
                     <tr>
                       <td colSpan={isAdmin ? 7 : 6} className="text-center text-slate-400 py-8 text-sm">
                         לא נמצאו צ׳ משויכים
@@ -501,13 +531,33 @@ export default function WeaponsInventoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {detail.rows.map((r) => (
-                    <tr key={r.serial_number} className="border-b border-slate-100 last:border-0">
-                      <td className="p-2">{r.assigned_to_name ?? '—'}</td>
-                      <td className="p-2 text-slate-500">{r.assigned_to_pn}</td>
-                      <td className="p-2 font-mono" dir="ltr">{r.serial_number}</td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    const item = itemById.get(detail.itemId);
+                    const isQtyItem = item ? !item.has_serials : detail.rows.some((r) => isQtySerial(r.serial_number));
+                    if (isQtyItem) {
+                      // Quantity-tracked item → one row per soldier with a count (not a צ׳).
+                      const byPn = new Map<string, { name: string | null; pn: string; qty: number }>();
+                      for (const r of detail.rows) {
+                        const ex = byPn.get(r.assigned_to_pn);
+                        if (ex) ex.qty += 1;
+                        else byPn.set(r.assigned_to_pn, { name: r.assigned_to_name, pn: r.assigned_to_pn, qty: 1 });
+                      }
+                      return [...byPn.values()].map((v) => (
+                        <tr key={v.pn} className="border-b border-slate-100 last:border-0">
+                          <td className="p-2">{v.name ?? '—'}</td>
+                          <td className="p-2 text-slate-500">{v.pn}</td>
+                          <td className="p-2">{v.qty}</td>
+                        </tr>
+                      ));
+                    }
+                    return detail.rows.map((r) => (
+                      <tr key={r.serial_number} className="border-b border-slate-100 last:border-0">
+                        <td className="p-2">{r.assigned_to_name ?? '—'}</td>
+                        <td className="p-2 text-slate-500">{r.assigned_to_pn}</td>
+                        <td className="p-2 font-mono" dir="ltr">{r.serial_number}</td>
+                      </tr>
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>

@@ -15,9 +15,39 @@ import {
 import type { Unit, Item } from '../lib/database.types';
 
 /**
+ * Clickable check-date badge (matches the weapons "סיכום לפי צ׳" style):
+ * green with the date when fresh (≤ INSPECTION_STALE_DAYS), red "דרוש בדיקה"
+ * when stale/missing. Clicking marks it as checked today (when permitted).
+ */
+function CheckBadge({
+  dateStr, canMark, busy, onMark,
+}: {
+  dateStr: string | null;
+  canMark: boolean;
+  busy: boolean;
+  onMark: () => void;
+}) {
+  const stale = inspectionStatus(dateStr) === 'needs-inspection';
+  const label = stale ? 'דרוש בדיקה' : new Date(dateStr!).toLocaleDateString('he-IL');
+  const tone = stale ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700';
+  if (!canMark) return <span className={`badge ${tone}`}>{label}</span>;
+  return (
+    <button
+      type="button"
+      onClick={onMark}
+      disabled={busy}
+      title="סמן כנבדק היום"
+      className={`badge cursor-pointer transition disabled:opacity-50 ${tone} ${stale ? 'hover:bg-red-100' : 'hover:bg-emerald-100'}`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
  * Unit stock report. Two views:
  *   - Matrix (quantitative): rows = items, columns = units, cells = available/stock
- *   - Inspections (detailed): per-serial, with holder soldier + status + inspection button
+ *   - Inspections (detailed): per-serial, with holder soldier + clickable check badges
  *
  * Admin sees every unit; raspar is auto-restricted to their own unit.
  */
@@ -257,7 +287,7 @@ export default function UnitStockReportPage() {
           )}
           <div className="flex items-end text-xs text-slate-500">
             {mode === 'inspections'
-              ? `סטטוס "נמצא" תקף עד ${INSPECTION_STALE_DAYS} ימים מהבדיקה האחרונה.`
+              ? `בדיקה תקפה עד ${INSPECTION_STALE_DAYS} ימים; לאחר מכן "דרוש בדיקה". לחיצה על תאריך מסמנת כנבדק היום.`
               : 'מלאי = הוקצה ע״י הגדוד. זמין = מלאי − מה שחולק לחיילים.'}
           </div>
         </div>
@@ -319,27 +349,25 @@ export default function UnitStockReportPage() {
                     <th>פריט</th>
                     <th>צ׳</th>
                     <th>חייל</th>
-                    <th className="text-center">סטטוס</th>
-                    <th>נבדק לאחרונה</th>
-                    <th>ירוק בעיניים</th>
+                    <th className="text-center">נבדק לאחרונה</th>
+                    <th className="text-center">ירוק בעיניים</th>
                   </tr>
                 </thead>
                 <tbody>
                   {inspectionGroups.map((g) => (
                     <Fragment key={g.unitId}>
                       <tr className="bg-slate-100">
-                        <td colSpan={7} className="font-semibold text-slate-700 px-2 py-1.5">
+                        <td colSpan={6} className="font-semibold text-slate-700 px-2 py-1.5">
                           {g.unitName}
                           <span className="text-xs font-normal text-slate-500 mr-2">({g.rows.length} צ׳ים)</span>
                         </td>
                       </tr>
                       {g.rows.map((r) => {
-                        const st = inspectionStatus(r.lastInspectedAt);
                         const canMark = isAdmin || (isRaspar && r.unitId === raspUnitId);
                         return (
                           <tr key={r.serialId}>
-                            <td>{r.unitName}</td>
-                            <td>{r.itemName}</td>
+                            <td className="text-sm text-slate-600">{r.unitName}</td>
+                            <td className="font-medium">{r.itemName}</td>
                             <td className="font-mono text-xs" dir="ltr">{r.serialNumber}</td>
                             <td className="text-sm whitespace-nowrap">
                               {r.soldierName ? (
@@ -354,45 +382,20 @@ export default function UnitStockReportPage() {
                               )}
                             </td>
                             <td className="text-center">
-                              {st === 'found' ? (
-                                <span className="badge bg-emerald-100 text-emerald-700">נמצא</span>
-                              ) : (
-                                <span className="badge bg-amber-100 text-amber-800">דרוש בדיקה</span>
-                              )}
+                              <CheckBadge
+                                dateStr={r.lastInspectedAt}
+                                canMark={canMark}
+                                busy={busyKey === `${r.serialId}:inspect`}
+                                onMark={() => handleMarkInspected(r)}
+                              />
                             </td>
-                            <td className="text-xs text-slate-600 whitespace-nowrap">
-                              <div>
-                                {r.lastInspectedAt
-                                  ? new Date(r.lastInspectedAt).toLocaleString('he-IL')
-                                  : '—'}
-                              </div>
-                              {canMark && (
-                                <button
-                                  onClick={() => handleMarkInspected(r)}
-                                  disabled={busyKey === `${r.serialId}:inspect`}
-                                  title="סמן בדיקה טכנית — מעדכן את תאריך הבדיקה האחרונה"
-                                  className="mt-1 inline-flex items-center text-amber-700 hover:text-amber-900 disabled:opacity-50 text-xs font-medium"
-                                >
-                                  סמן בדיקה
-                                </button>
-                              )}
-                            </td>
-                            <td className="text-xs text-slate-600 whitespace-nowrap">
-                              <div>
-                                {r.greenCheckAt
-                                  ? new Date(r.greenCheckAt).toLocaleString('he-IL')
-                                  : '—'}
-                              </div>
-                              {canMark && (
-                                <button
-                                  onClick={() => handleMarkGreen(r)}
-                                  disabled={busyKey === `${r.serialId}:green`}
-                                  title="סמן ירוק בעיניים — הפריט נמצא וידוע מיקומו"
-                                  className="mt-1 inline-flex items-center text-emerald-700 hover:text-emerald-900 disabled:opacity-50 text-xs font-medium"
-                                >
-                                  סמן ירוק
-                                </button>
-                              )}
+                            <td className="text-center">
+                              <CheckBadge
+                                dateStr={r.greenCheckAt}
+                                canMark={canMark}
+                                busy={busyKey === `${r.serialId}:green`}
+                                onMark={() => handleMarkGreen(r)}
+                              />
                             </td>
                           </tr>
                         );

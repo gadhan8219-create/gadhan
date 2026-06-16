@@ -78,10 +78,20 @@ export async function listVehiclesDueForTest(unitId: string | null): Promise<Veh
 }
 
 export async function createVehicle(input: VehicleInput): Promise<Vehicle> {
+  const plate = input.car_plate.trim();
+  if (!plate) throw new Error('מספר רכב חסר');
+
+  // Friendly pre-check for an existing plate. RLS may hide vehicles of other
+  // units, so this catches same-unit duplicates with a clear message; the DB
+  // unique index (migration 0030) is the real guarantee across all units.
+  const { data: dup } = await supabase
+    .from('vehicles').select('id').eq('car_plate', plate).maybeSingle();
+  if (dup) throw new Error('מספר רכב כבר קיים במערכת');
+
   const { data, error } = await supabase
     .from('vehicles')
     .insert({
-      car_plate: input.car_plate.trim(),
+      car_plate: plate,
       unit_id: input.unit_id,
       type_id: input.type_id,
       next_test_date: input.next_test_date ?? null,
@@ -89,7 +99,13 @@ export async function createVehicle(input: VehicleInput): Promise<Vehicle> {
     })
     .select('*')
     .single();
-  if (error) throw error;
+  if (error) {
+    // 23505 = unique_violation — a plate that exists in a unit this user can't see.
+    if ((error as { code?: string }).code === '23505') {
+      throw new Error('מספר רכב כבר קיים במערכת');
+    }
+    throw error;
+  }
   return normalizeDocs(data as Vehicle);
 }
 

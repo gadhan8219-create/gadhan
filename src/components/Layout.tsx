@@ -35,12 +35,12 @@ const SECTIONS: NavSection[] = [
   },
   {
     id: 'bunker', label: 'בונקר', items: [
-      { to: '/bunker/inventory', label: 'מלאי' },
-      { to: '/bunker/receive', label: 'קבלות' },
-      { to: '/bunker/dispense', label: 'ניפוק' },
-      { to: '/bunker/credit', label: 'זיכוי' },
-      { to: '/bunker/transfer', label: 'העברה' },
-      { to: '/bunker/regulate', label: 'וויסותים' },
+      { to: '/bunker/inventory', label: 'מלאי', admin: true },
+      { to: '/bunker/receive', label: 'קבלות', admin: true },
+      { to: '/bunker/dispense', label: 'ניפוק', admin: true },
+      { to: '/bunker/credit', label: 'זיכוי', admin: true },
+      { to: '/bunker/transfer', label: 'העברה', admin: true },
+      { to: '/bunker/regulate', label: 'וויסותים', admin: true },
       { to: '/bunker/shatsal', label: 'שצ״ל' },
       { to: '/bunker/summary', label: 'סיכום' },
     ],

@@ -444,6 +444,11 @@ Tailwind לא הופך אוטומטית. `mr-` ו-`ml-` לא מתחלפים.
 ### Pages (תחת /bunker)
 inventory (מלאי) · receive (קבלות) · dispense (ניפוק) · credit (זיכוי) · transfer (העברה) · regulate (וויסותים) · shatsal (שצ״ל) · summary (סיכום).
 
+### הרשאות בונקר (UI)
+- **רס״פ**: רשאי רק **shatsal** (דיווח שצ״ל) ו-**summary** (סיכום). ששת המסכים האחרים — `requireAdmin` ב-`App.tsx` ומסומנים `admin: true` ב-`Layout.tsx` (מוסתרים בניווט).
+- **מנהל**: כל מסכי הבונקר.
+- הערה: החסימה כיום היא ברמת ה-UI (כמו שאר דפי ה-admin באפליקציה). ה-RPCs `bunker_apply_dispense/credit/transfer/regulation/receipt` עדיין `grant execute ... to authenticated` ללא בדיקת `is_admin()` בגוף — חיזוק שרת הוא follow-up אופציונלי. `inventory`/`items` כן מוגנים ב-RLS (`*_admin_write` עם `is_admin()`, מיגרציה 0028).
+
 ### סיכום שצ״ל (summary)
 - **סה״כ תחמושת** = נופק פחות זוכה לפי פריט מתחילת הסבב.
 - **סה״כ שצ״ל** = סכום דיווחי השימוש לצורכי לחימה לפי פריט.
@@ -491,6 +496,7 @@ Lib: `lib/attendance.ts` (כולל `todayISO()`, `listStatuses`, `getAttendanceF
 
 - `documents` = מערך `{ name, path, uploaded_at, url? }`. קבצים ב-bucket `vehicle-docs` — **פרטי** מאז מיגרציה 0028. קריאה דרך signed URL (`lib/storage.ts`). שדה `url` נשאר רק לשורות ישנות (legacy public URL). תצוגה inline דרך `DocViewerModal` (ראה סעיף 17).
 - `next_test_range` = קילומטרז' לבדיקה הבאה (חלופה ל-`next_test_date`).
+- **מספר רכב ייחודי**: `createVehicle` (`lib/vehicles.ts`) בודק כפילות לפני insert (הודעה "מספר רכב כבר קיים במערכת") + מתרגם שגיאת `23505`. אינדקס ייחודי ב-DB: `vehicles_car_plate_unique` (מיגרציה `0030`). רס״פ רשאי להוסיף רכבים (לא admin-only).
 
 ### Pages (תחת /vehicles)
 | דף | נתיב | תיאור |
@@ -582,3 +588,5 @@ frame-ancestors 'none'; upgrade-insecure-requests
 ---
 
 *עודכן: 2026-06-16 (Security hardening: idle logout, password expiry 60d, password strength, private buckets, CSP/headers, rate limiting; DocViewerModal — תצוגת מסמכים inline; הסרת כותרת login + הגדלת לוגו)*
+
+*עודכן: 2026-06-16 (הרשאות בונקר לרס״פ — רק shatsal+summary; מספר רכב ייחודי — מיגרציה 0030 + בדיקת client)*

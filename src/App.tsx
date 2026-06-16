@@ -74,12 +74,13 @@ export default function App() {
         <Route path="delek/admin" element={<ProtectedRoute requireAdmin><DelekAdminPage /></ProtectedRoute>} />
 
         {/* ── בונקר (Bunker) ── */}
-        <Route path="bunker/inventory" element={<BunkerInventoryPage />} />
-        <Route path="bunker/receive" element={<BunkerReceivePage />} />
-        <Route path="bunker/dispense" element={<BunkerDispensePage />} />
-        <Route path="bunker/credit" element={<BunkerCreditPage />} />
-        <Route path="bunker/transfer" element={<BunkerTransferPage />} />
-        <Route path="bunker/regulate" element={<BunkerRegulatePage />} />
+        {/* רס"פ רשאי רק לדווח שצ"ל ולראות סיכום; שאר מסכי הבונקר — מנהל בלבד. */}
+        <Route path="bunker/inventory" element={<ProtectedRoute requireAdmin><BunkerInventoryPage /></ProtectedRoute>} />
+        <Route path="bunker/receive" element={<ProtectedRoute requireAdmin><BunkerReceivePage /></ProtectedRoute>} />
+        <Route path="bunker/dispense" element={<ProtectedRoute requireAdmin><BunkerDispensePage /></ProtectedRoute>} />
+        <Route path="bunker/credit" element={<ProtectedRoute requireAdmin><BunkerCreditPage /></ProtectedRoute>} />
+        <Route path="bunker/transfer" element={<ProtectedRoute requireAdmin><BunkerTransferPage /></ProtectedRoute>} />
+        <Route path="bunker/regulate" element={<ProtectedRoute requireAdmin><BunkerRegulatePage /></ProtectedRoute>} />
         <Route path="bunker/shatsal" element={<BunkerShatsalPage />} />
         <Route path="bunker/summary" element={<BunkerSummaryPage />} />
 

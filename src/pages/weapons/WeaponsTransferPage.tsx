@@ -405,7 +405,7 @@ export default function WeaponsTransferPage() {
   }
 
   async function doIpasoon() {
-    const rows = srcSerials.filter((r) => checked.has(r.serial_number) && !r.is_zeroed && !isQtySerial(r.serial_number));
+    const rows = srcSerials.filter((r) => checked.has(r.serial_number) && !r.is_zeroed);
     if (!rows.length) { setError('לא נבחרו פריטים'); return; }
     setLoading(true); setError(null);
     try {
@@ -713,7 +713,7 @@ export default function WeaponsTransferPage() {
                         )}
                         {r.is_zeroed && <span className="badge bg-orange-100 text-orange-700 text-xs">מאופסן</span>}
                       </label>
-                      {isReal && isChecked && !r.is_zeroed && (
+                      {isChecked && !r.is_zeroed && (
                         <div className="px-3 pb-3">
                           <input
                             className="input text-sm"

@@ -265,7 +265,7 @@ interface PdfCallArgs {
 |------|------|
 | `0016_weapons_zeroed_flag.sql` | הוסיף `is_zeroed boolean`, `zeroed_at timestamptz` לטבלת weapons_item_serials |
 | `0033_weapons_raspar_signing.sql` | רס״פ רשאי להחתים/לזכות/להעביר/לאפסן נשק לחיילי **המסגרת שלו** (RLS). מחליף את `weapons_serials_raspar_check` ב-`weapons_serials_raspar_update` (UPDATE — מחזיק ישן/חדש מהמסגרת או צ׳ פנוי) + `weapons_serials_raspar_insert` (שורות כמות). admin עם `weapons_serials_write`. |
-| `0034_weapons_zeroed_note.sql` | הוסיף `zeroed_note text` ל-weapons_item_serials — הערה אופציונלית באיפסון (placeholder "בטחונית צוות"). מתאפס בזיכוי. |
+| `0034_weapons_zeroed_note.sql` | הוסיף `zeroed_note text` ל-weapons_item_serials — הערה אופציונלית באיפסון (placeholder "בטחונית צוות") **לכל פריט** (כולל פריטי כמות). מתאפס בזיכוי. |
 | `0035_weapons_returns_raspar.sql` | `weapons_returns_raspar_insert` — רס״פ רשאי לרשום זיכוי לחיילי המסגרת שלו. קודם ה-write היה admin-only (0018) → זיכוי רס״פ נכשל בשקט (היסטוריית PDF נשברה). |
 
 ### באגים שתוקנו (נשק) — 2026-06-16

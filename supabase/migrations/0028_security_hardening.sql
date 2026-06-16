@@ -48,8 +48,10 @@ create policy vehicles_all on vehicles
 
 -- vehicle_types is shared reference data: everyone reads, only admin writes.
 drop policy if exists vehicle_types_all on vehicle_types;
+drop policy if exists vehicle_types_select on vehicle_types;
 create policy vehicle_types_select on vehicle_types
   for select to authenticated using (true);
+drop policy if exists vehicle_types_admin_write on vehicle_types;
 create policy vehicle_types_admin_write on vehicle_types
   for all to authenticated using (is_admin()) with check (is_admin());
 
@@ -59,6 +61,7 @@ create policy vehicle_types_admin_write on vehicle_types
 --     so direct table DML is revoked from clients.
 -- ─────────────────────────────────────────────────────────────────────────────
 drop policy if exists attendance_all on attendance;
+drop policy if exists attendance_select on attendance;
 create policy attendance_select on attendance
   for select to authenticated
   using (
@@ -74,8 +77,10 @@ revoke insert, update, delete on public.attendance from authenticated;
 
 -- attendance_statuses is shared reference data: everyone reads, only admin writes.
 drop policy if exists attendance_statuses_all on attendance_statuses;
+drop policy if exists attendance_statuses_select on attendance_statuses;
 create policy attendance_statuses_select on attendance_statuses
   for select to authenticated using (true);
+drop policy if exists attendance_statuses_admin_write on attendance_statuses;
 create policy attendance_statuses_admin_write on attendance_statuses
   for all to authenticated using (is_admin()) with check (is_admin());
 
@@ -104,13 +109,17 @@ end $$;
 
 -- Reference data: shared read, admin-only writes (mirrors items_admin_write in 0001).
 drop policy if exists bunker_warehouses_all on bunker_warehouses;
+drop policy if exists bunker_warehouses_select on bunker_warehouses;
 create policy bunker_warehouses_select on bunker_warehouses
   for select to authenticated using (true);
+drop policy if exists bunker_warehouses_admin_write on bunker_warehouses;
 create policy bunker_warehouses_admin_write on bunker_warehouses
   for all to authenticated using (is_admin()) with check (is_admin());
 
 drop policy if exists bunker_items_all on bunker_items;
+drop policy if exists bunker_items_select on bunker_items;
 create policy bunker_items_select on bunker_items
   for select to authenticated using (true);
+drop policy if exists bunker_items_admin_write on bunker_items;
 create policy bunker_items_admin_write on bunker_items
   for all to authenticated using (is_admin()) with check (is_admin());

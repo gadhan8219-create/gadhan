@@ -139,12 +139,16 @@ export default function WeaponsInventoryPage() {
     return isAdmin || (isRaspar && unitId != null && unitId === raspUnitId);
   }
 
-  async function markCheck(r: SerialRow, field: 'weapon' | 'green') {
+  // Marks every passed serial id as checked now. For quantity-tracked items a
+  // single display row represents many synthetic serials, so we update them all.
+  async function markCheck(ids: string[], field: 'weapon' | 'green') {
+    if (!ids.length) return;
     const col = field === 'weapon' ? 'weapon_check_at' : 'green_check_at';
     const now = new Date().toISOString();
-    const { error } = await supabase.from('weapons_item_serials').update({ [col]: now }).eq('id', r.id);
+    const { error } = await supabase.from('weapons_item_serials').update({ [col]: now }).in('id', ids);
     if (error) { alert(error.message); return; }
-    setSerials((prev) => prev.map((s) => (s.id === r.id ? { ...s, [col]: now } : s)));
+    const idSet = new Set(ids);
+    setSerials((prev) => prev.map((s) => (idSet.has(s.id) ? { ...s, [col]: now } : s)));
   }
 
   async function toggleExempt(item: WeaponsItem) {
@@ -225,24 +229,36 @@ export default function WeaponsInventoryPage() {
 
   // Collapse synthetic qty rows: one row per (item, soldier, unit) showing a
   // count in the צ׳ column instead of the internal __qty__ serial string.
-  interface DisplayRow extends SerialView { quantity: number; isQty: boolean; }
+  // `ids` keeps every underlying serial id so a check marks the whole group, and
+  // the aggregate check date is null (= due) if ANY item in the group is missing
+  // it, otherwise the oldest date in the group.
+  interface DisplayRow extends SerialView { quantity: number; isQty: boolean; ids: string[]; }
+  // null wins (a missing check means the group is due); otherwise keep the oldest.
+  const oldestOrNull = (a: string | null, b: string | null): string | null =>
+    a === null || b === null ? null : (a < b ? a : b);
   const displayRows: DisplayRow[] = [];
   const qtyIndex = new Map<string, DisplayRow>();
   for (const r of serialRows) {
     if (isQtySerial(r.serial_number)) {
       const key = `${r.item_id}::${r.assigned_to_pn}::${r.unit_id ?? ''}`;
       const ex = qtyIndex.get(key);
-      if (ex) { ex.quantity += 1; continue; }
-      const dr: DisplayRow = { ...r, quantity: 1, isQty: true };
+      if (ex) {
+        ex.quantity += 1;
+        ex.ids.push(r.id);
+        ex.weapon_check_at = oldestOrNull(ex.weapon_check_at, r.weapon_check_at);
+        ex.green_check_at = oldestOrNull(ex.green_check_at, r.green_check_at);
+        continue;
+      }
+      const dr: DisplayRow = { ...r, quantity: 1, isQty: true, ids: [r.id] };
       qtyIndex.set(key, dr);
       displayRows.push(dr);
     } else {
-      displayRows.push({ ...r, quantity: 1, isQty: false });
+      displayRows.push({ ...r, quantity: 1, isQty: false, ids: [r.id] });
     }
   }
 
   // Small reusable cell for a single check column
-  function CheckCell({ r, field }: { r: SerialView; field: 'weapon' | 'green' }) {
+  function CheckCell({ r, field }: { r: DisplayRow; field: 'weapon' | 'green' }) {
     const dateStr = field === 'weapon' ? r.weapon_check_at : r.green_check_at;
     const status = checkStatus(dateStr, r.noCheckRequired);
     if (status === 'exempt') {
@@ -254,7 +270,7 @@ export default function WeaponsInventoryPage() {
       return <span className={`badge ${tone}`}>{label}</span>;
     }
     return (
-      <button type="button" onClick={() => markCheck(r, field)} title="סמן כנבדק היום"
+      <button type="button" onClick={() => markCheck(r.ids, field)} title="סמן כנבדק היום"
         className={`badge cursor-pointer transition ${tone} ${status === 'due' ? 'hover:bg-red-100' : 'hover:bg-emerald-100'}`}>
         {label}
       </button>
@@ -473,22 +489,20 @@ export default function WeaponsInventoryPage() {
                       </td>
                       <td className="whitespace-nowrap">{r.assigned_to_name ?? r.assigned_to_pn}</td>
                       <td className="text-center">
-                        {r.isQty ? <span className="text-slate-300">—</span> : <CheckCell r={r} field="weapon" />}
+                        <CheckCell r={r} field="weapon" />
                       </td>
                       <td className="text-center">
-                        {r.isQty ? <span className="text-slate-300">—</span> : <CheckCell r={r} field="green" />}
+                        <CheckCell r={r} field="green" />
                       </td>
                       {isAdmin && (
                         <td className="text-center">
-                          {r.isQty ? <span className="text-slate-300">—</span> : (
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 accent-emerald-600 cursor-pointer"
-                              checked={r.noCheckRequired}
-                              onChange={() => { const it = itemById.get(r.item_id); if (it) toggleExempt(it); }}
-                              title="פריט לא דורש בדיקה"
-                            />
-                          )}
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                            checked={r.noCheckRequired}
+                            onChange={() => { const it = itemById.get(r.item_id); if (it) toggleExempt(it); }}
+                            title="פריט לא דורש בדיקה"
+                          />
                         </td>
                       )}
                     </tr>

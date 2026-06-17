@@ -37,9 +37,8 @@ import BunkerSummaryPage from './pages/bunker/BunkerSummaryPage';
 import AttendanceReportPage from './pages/personnel/AttendanceReportPage';
 import AttendanceRecordsPage from './pages/personnel/AttendanceRecordsPage';
 // Vehicle pages (רכב)
-import VehicleYrmPage from './pages/vehicles/VehicleYrmPage';
-import VehicleWhitePage from './pages/vehicles/VehicleWhitePage';
-import VehicleMilitaryPage from './pages/vehicles/VehicleMilitaryPage';
+import VehicleManagePage from './pages/vehicles/VehicleManagePage';
+import VehicleSummaryPage from './pages/vehicles/VehicleSummaryPage';
 
 export default function App() {
   return (
@@ -89,9 +88,8 @@ export default function App() {
         <Route path="personnel/records" element={<AttendanceRecordsPage />} />
 
         {/* ── רכב (Vehicles) ── */}
-        <Route path="vehicles/yrm" element={<VehicleYrmPage />} />
-        <Route path="vehicles/white" element={<VehicleWhitePage />} />
-        <Route path="vehicles/military" element={<VehicleMilitaryPage />} />
+        <Route path="vehicles/manage" element={<VehicleManagePage />} />
+        <Route path="vehicles/summary" element={<VehicleSummaryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

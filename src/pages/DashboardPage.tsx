@@ -204,7 +204,7 @@ export default function DashboardPage() {
         <DashSection
           title="רכבים נדרשים לבדיקה"
           subtitle="רכבים שבדיקתם הבאה בעוד פחות מ-4 ימים (או באיחור)"
-          to="/vehicles/military"
+          to="/vehicles/summary"
         >
           {loading ? (
             <SkeletonRows />

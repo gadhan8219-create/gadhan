@@ -1,15 +1,29 @@
 import { supabase } from './supabase';
 
-// רכב — vehicle registry. Vehicles are tied to a unit and a type (יר״מ / לבן /
-// צבאי). Documents (יר״מ form, license) live in the `vehicle-docs` Storage
-// bucket and are referenced from the row's `documents` jsonb array.
+// רכב — vehicle registry.
+//
+// `vehicle_types` is a CATALOG of vehicle models (since migration 0037): each row
+// is a model (name, e.g. "משאית קירור") that belongs to a category (type:
+// יר״מ / לבן / צבאי) and declares whether vehicles of that model need uploaded
+// documents (license). `vehicles` ties a plate to a unit and to one catalog model
+// (type_id), with documents, the next-test reminder (date or kilometrage) and the
+// current mileage. Documents live in the `vehicle-docs` Storage bucket.
 
-export type VehicleTypeName = 'יר״מ' | 'לבן' | 'צבאי';
+export type VehicleCategory = 'יר״מ' | 'לבן' | 'צבאי';
+export const VEHICLE_CATEGORIES: VehicleCategory[] = ['יר״מ', 'לבן', 'צבאי'];
 
 export interface VehicleType {
   id: string;
-  name: string;
+  name: string;            // model name, e.g. "משאית קירור"
+  type: VehicleCategory;   // category
+  license: boolean;        // model requires uploaded documents
   created_at: string;
+}
+
+export interface VehicleTypeInput {
+  name: string;
+  type: VehicleCategory;
+  license: boolean;
 }
 
 export interface VehicleDoc {
@@ -23,12 +37,20 @@ export interface Vehicle {
   id: string;
   car_plate: string;
   unit_id: string | null;
-  type_id: string;
+  type_id: string;                 // → vehicle_types (catalog model)
   documents: VehicleDoc[];
   next_test_date: string | null;
   next_test_range: number | null;
+  mileage: number | null;          // קילומטרג׳ נוכחי
   created_at: string;
   updated_at: string;
+}
+
+/** A vehicle enriched with its catalog model's name / category / license flag. */
+export interface VehicleFull extends Vehicle {
+  type_name: string;
+  category: string;
+  license: boolean;
 }
 
 export interface VehicleInput {
@@ -37,36 +59,72 @@ export interface VehicleInput {
   type_id: string;
   next_test_date?: string | null;
   next_test_range?: number | null;
+  mileage?: number | null;
 }
+
+// Document labels for models that require documents (license = true).
+export const VEHICLE_DOC_LABELS = ['טופס', 'רשיון'];
 
 // Reminder window: a vehicle is "due" when fewer than this many days remain
 // until its next test date (overdue dates count too).
 export const TEST_ALERT_DAYS = 4;
 
+// ── Catalog (vehicle_types) ───────────────────────────────────────────────────
+
 export async function listVehicleTypes(): Promise<VehicleType[]> {
-  const { data, error } = await supabase.from('vehicle_types').select('*').order('name');
+  const { data, error } = await supabase.from('vehicle_types').select('*').order('type').order('name');
   if (error) throw error;
   return (data ?? []) as VehicleType[];
 }
 
-/** Resolve a type name (יר״מ / לבן / צבאי) to its id. */
-export async function typeIdByName(name: VehicleTypeName): Promise<string> {
-  const { data, error } = await supabase.from('vehicle_types').select('id').eq('name', name).maybeSingle();
-  if (error) throw error;
-  if (!data) throw new Error(`סוג רכב "${name}" לא קיים`);
-  return (data as { id: string }).id;
+export async function createVehicleType(input: VehicleTypeInput): Promise<VehicleType> {
+  const name = input.name.trim();
+  if (!name) throw new Error('שם הכלי חסר');
+  const { data, error } = await supabase
+    .from('vehicle_types')
+    .insert({ name, type: input.type, license: input.license })
+    .select('*')
+    .single();
+  if (error) {
+    if ((error as { code?: string }).code === '23505') throw new Error('כלי בשם זה כבר קיים בסוג הזה');
+    throw error;
+  }
+  return data as VehicleType;
 }
 
-/** List vehicles of a given type, optionally restricted to one unit. */
-export async function listVehicles(typeId: string, unitId: string | null): Promise<Vehicle[]> {
-  let q = supabase.from('vehicles').select('*').eq('type_id', typeId).order('car_plate');
+export async function deleteVehicleType(id: string): Promise<void> {
+  const { error } = await supabase.from('vehicle_types').delete().eq('id', id);
+  if (error) {
+    // 23503 = foreign_key_violation — a vehicle still references this model.
+    if ((error as { code?: string }).code === '23503') {
+      throw new Error('לא ניתן למחוק — קיימים רכבים מסוג זה');
+    }
+    throw error;
+  }
+}
+
+// ── Vehicles ──────────────────────────────────────────────────────────────────
+
+/** All vehicles (admin) or one unit's, enriched with their catalog model. */
+export async function listVehiclesFull(unitId: string | null, category?: string): Promise<VehicleFull[]> {
+  let q = supabase
+    .from('vehicles')
+    .select('*, vehicle_types(name, type, license)')
+    .order('car_plate');
   if (unitId) q = q.eq('unit_id', unitId);
   const { data, error } = await q;
   if (error) throw error;
-  return ((data ?? []) as Vehicle[]).map(normalizeDocs);
+  let rows = ((data ?? []) as any[]).map((r) => ({
+    ...normalizeDocs(r as Vehicle),
+    type_name: r.vehicle_types?.name ?? '—',
+    category: r.vehicle_types?.type ?? '—',
+    license: r.vehicle_types?.license ?? false,
+  })) as VehicleFull[];
+  if (category) rows = rows.filter((r) => r.category === category);
+  return rows;
 }
 
-/** List all vehicles whose next test is within TEST_ALERT_DAYS (or overdue). */
+/** All vehicles whose next test is within TEST_ALERT_DAYS (or overdue). */
 export async function listVehiclesDueForTest(unitId: string | null): Promise<Vehicle[]> {
   let q = supabase.from('vehicles').select('*').not('next_test_date', 'is', null).order('next_test_date');
   if (unitId) q = q.eq('unit_id', unitId);
@@ -80,6 +138,7 @@ export async function listVehiclesDueForTest(unitId: string | null): Promise<Veh
 export async function createVehicle(input: VehicleInput): Promise<Vehicle> {
   const plate = input.car_plate.trim();
   if (!plate) throw new Error('מספר רכב חסר');
+  if (!input.type_id) throw new Error('נא לבחור שם וסוג כלי');
 
   // Friendly pre-check for an existing plate. RLS may hide vehicles of other
   // units, so this catches same-unit duplicates with a clear message; the DB
@@ -96,6 +155,7 @@ export async function createVehicle(input: VehicleInput): Promise<Vehicle> {
       type_id: input.type_id,
       next_test_date: input.next_test_date ?? null,
       next_test_range: input.next_test_range ?? null,
+      mileage: input.mileage ?? null,
     })
     .select('*')
     .single();
@@ -111,7 +171,7 @@ export async function createVehicle(input: VehicleInput): Promise<Vehicle> {
 
 export async function updateVehicle(
   id: string,
-  patch: Partial<Pick<Vehicle, 'car_plate' | 'unit_id' | 'next_test_date' | 'next_test_range' | 'documents'>>,
+  patch: Partial<Pick<Vehicle, 'car_plate' | 'unit_id' | 'type_id' | 'next_test_date' | 'next_test_range' | 'mileage' | 'documents'>>,
 ): Promise<void> {
   const { error } = await supabase
     .from('vehicles')

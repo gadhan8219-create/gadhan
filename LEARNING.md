@@ -385,7 +385,7 @@ interface FuelLog {
 דלק (delek)        — /delek, /delek/admin
 בונקר (bunker)     — /bunker/inventory, /receive, /dispense, /credit, /transfer, /regulate, /shatsal, /summary
 שלישות (personnel) — /personnel/attendance, /personnel/records
-רכב (vehicles)     — /vehicles/yrm, /vehicles/white, /vehicles/military
+רכב (vehicles)     — /vehicles/manage, /vehicles/summary
 ניהול מערכת (admin) — /soldiers-import, /soldiers, /users   (גלגל שיניים — האימוג'י היחיד שנשאר)
 ```
 
@@ -520,26 +520,36 @@ Lib: `lib/attendance.ts` (כולל `todayISO()`, `listStatuses`, `getAttendanceF
 
 ## 13. מודול רכב (vehicles)
 
-### מצב: מחובר ל-Supabase + Storage. מיגרציה `0027_vehicles.sql`.
+### מצב: מחובר ל-Supabase + Storage. מיגרציות `0027_vehicles.sql` + **`0037_vehicle_types_remodel.sql`** (מבנה חדש).
+
+### מבנה חדש (2026-06-17, מיגרציה 0037) — vehicle_types = קטלוג דגמים
+שינוי תפיסתי: `vehicle_types` אינו עוד 3 הקטגוריות הקבועות, אלא **קטלוג של דגמי רכב**. כל שורה = דגם:
+- `name` — שם הכלי (משאית קירור, האמר, רמ-סע…)
+- `type` — הקטגוריה (`יר״מ`/`לבן`/`צבאי`, `check` constraint + index)
+- `license` (bool) — האם רכבים מהדגם דורשים העלאת מסמכים
+- ייחודיות: `unique(name, type)` (אותו שם יכול לחזור בין קטגוריות).
+
+`vehicles` קיבל `mileage integer` (קילומטרג׳ נוכחי). `vehicles.type_id` מצביע כעת על שורת **דגם** בקטלוג (שנושאת name+type+license). המיגרציה **רוקנה** את `vehicles` + `vehicle_types` (החלטת מוצר — התחלה נקייה; מסמכים ישנים ב-bucket נשארים כ-orphans לא מזיקים).
 
 ### Tables
 | טבלה | תוכן |
 |------|------|
-| `vehicle_types` | סוגי רכב — נזרע: `יר״מ`, `לבן`, `צבאי` |
-| `vehicles` | `car_plate, unit_id, type_id, documents jsonb, next_test_date, next_test_range` |
+| `vehicle_types` | קטלוג דגמים: `name, type (יר״מ/לבן/צבאי), license bool` |
+| `vehicles` | `car_plate, unit_id, type_id→vehicle_types, documents jsonb, next_test_date, next_test_range, mileage` |
 
-- `documents` = מערך `{ name, path, uploaded_at, url? }`. קבצים ב-bucket `vehicle-docs` — **פרטי** מאז מיגרציה 0028. קריאה דרך signed URL (`lib/storage.ts`). שדה `url` נשאר רק לשורות ישנות (legacy public URL). תצוגה inline דרך `DocViewerModal` (ראה סעיף 17).
+- `documents` = מערך `{ name, path, uploaded_at, url? }`. קבצים ב-bucket `vehicle-docs` — **פרטי** מאז מיגרציה 0028. קריאה דרך signed URL (`lib/storage.ts`). תצוגה inline דרך `DocViewerModal` (סעיף 17). תוויות מסמכים: `טופס`, `רשיון` (`VEHICLE_DOC_LABELS`).
 - `next_test_range` = קילומטרז' לבדיקה הבאה (חלופה ל-`next_test_date`).
-- **מספר רכב ייחודי**: `createVehicle` (`lib/vehicles.ts`) בודק כפילות לפני insert (הודעה "מספר רכב כבר קיים במערכת") + מתרגם שגיאת `23505`. אינדקס ייחודי ב-DB: `vehicles_car_plate_unique` (מיגרציה `0030`). רס״פ רשאי להוסיף רכבים (לא admin-only).
+- **מספר רכב ייחודי**: `createVehicle` בודק כפילות לפני insert + מתרגם `23505`. אינדקס ייחודי `vehicles_car_plate_unique` (מיגרציה `0030`). רס״פ רשאי להוסיף רכבים (לא admin-only).
 
-### Pages (תחת /vehicles)
+### Pages (תחת /vehicles) — 2 מסכים (החליפו את יר״מ/לבן/צבאי)
 | דף | נתיב | תיאור |
 |----|------|--------|
-| VehicleYrmPage | /vehicles/yrm | רכב יר״מ — מספר רכב + שיוך מסגרת; העלאת "טופס יר״מ" + "רשיון"; בדיקה הבאה לפי תאריך **או** קילומטרז'. |
-| VehicleWhitePage | /vehicles/white | רכב לבן — placeholder ("בקרוב"), לא לגעת לפי החלטת מוצר. |
-| VehicleMilitaryPage | /vehicles/military | רכבים צבאיים — צ׳ הרכב + שיוך מסגרת + תאריך בדיקה ידני; **התראה תמידית** לרכבים שנותרו להם פחות מ-`TEST_ALERT_DAYS` (=4) ימים (כולל באיחור). |
+| VehicleManagePage | /vehicles/manage | **ניהול כלי רכב**. (א) קטלוג דגמים — admin בלבד: שם+סוג+נדרשים-מסמכים, רשימה+מחיקה. (ב) הוספת רכב: מספר רכב, מסגרת, סוג (dropdown), שם (dropdown מסונן לפי הסוג→`type_id`), בדיקה הבאה תאריך/ק"מ, קילומטרג׳ נוכחי, ואם הדגם `license` — העלאת `טופס`+`רשיון` בתוך הטופס (נאסף ל-state, מועלה אחרי `createVehicle`). (ג) רשימת רכבים עם עריכת בדיקה/ק"מ/מסמכים ומחיקה. |
+| VehicleSummaryPage | /vehicles/summary | **סיכום רכבים** (קריאה בלבד). סינון לפי סוג (+מסגרת ל-admin). טבלה עם כל פרטי הרכב; **תא חסר מסומן באדום** (`bg-red-50`): מסגרת חסרה, בדיקה הבאה (אין תאריך ולא ק"מ), קילומטרג׳ חסר, מסמך נדרש חסר. דגם ללא `license` → "לא נדרש". |
 
-Lib: `lib/vehicles.ts` — `listVehicles`, `createVehicle`, `updateVehicle`, `deleteVehicle`, `uploadVehicleDoc`, `typeIdByName`, `listVehiclesDueForTest`, `daysUntil`, קבוע `TEST_ALERT_DAYS`.
+מחיקת דגם מהקטלוג חסומה אם קיימים רכבים מסוג זה (`23503` → הודעה עברית).
+
+Lib: `lib/vehicles.ts` — `listVehicleTypes`, `createVehicleType`, `deleteVehicleType`, `listVehiclesFull` (join ל-vehicle_types, מחזיר `VehicleFull` עם `type_name/category/license`, סינון לפי category), `listVehiclesDueForTest`, `createVehicle`, `updateVehicle`, `deleteVehicle`, `uploadVehicleDoc`, `daysUntil`, קבועים `VEHICLE_CATEGORIES`, `VEHICLE_DOC_LABELS`, `TEST_ALERT_DAYS`. (`typeIdByName` הוסר — אין עוד שורות קטגוריה בשם קבוע.)
 
 ---
 
@@ -575,7 +585,7 @@ Lib: `lib/vehicles.ts` — `listVehicles`, `createVehicle`, `updateVehicle`, `de
 ### שכבות אבטחה במערכת
 | שכבה | מימוש | קובץ |
 |------|--------|------|
-| **ניתוק אוטומטי בחוסר פעילות** | אחרי 30 דק' ללא פעילות → `signOut()` + ניווט ל-`/login`. עוקב אחרי mouse/keyboard/touch/scroll, מסונכרן בין טאבים דרך localStorage, נבדק מחדש ב-`visibilitychange`. | `lib/useIdleLogout.ts` (מורכב פעם אחת ב-`Layout.tsx`) |
+| **ניתוק אוטומטי בחוסר פעילות** | אחרי 30 דק' ללא פעילות → `signOut()` + ניווט ל-`/login`. עוקב אחרי mouse/keyboard/touch/scroll, מסונכרן בין טאבים דרך localStorage, נבדק מחדש ב-`visibilitychange`. **תיקון PWA (2026-06-17):** ב-mount בודקים קודם את חותמת `gadhan-last-activity` השמורה ומנתקים אם עברו 30 דק' — קודם ה-mount תמיד עשה `reset()` עיוור, כך ש-PWA שנהרג והופעל מחדש (אחרי יום) פתח חלון 30 דק' חדש ולעולם לא ניתק. | `lib/useIdleLogout.ts` (מורכב פעם אחת ב-`Layout.tsx`) |
 | **תפוגת סיסמה כל 60 יום** | `password_changed_at` בפרופיל. `isPasswordExpired()` בודק > 60 יום. `ProtectedRoute` כופה החלפה (`forced`). בטוח גם לפני המיגרציה — `null` ⇒ לא פג. | `lib/password.ts`, `ProtectedRoute.tsx`, `ChangePasswordPage.tsx` |
 | **חוזק סיסמה** | מינ' 8 תווים + אות + ספרה. נאכף ב-3 שכבות: טופס React, edge function `manage-users` (שרת), ואופציונלית Supabase Password policy. | `lib/password.ts` (`validatePassword`, `PASSWORD_RULE_TEXT`), `UsersPage.tsx`, `manage-users/index.ts` |
 | **באקטים פרטיים** | `signing-pdfs`, `vehicle-docs`, `fuel-receipts` פרטיים (0028). קריאה רק דרך signed URL מאומת (TTL שעה). | `lib/storage.ts` (`signedUrl`, `objectPath`) |
@@ -631,7 +641,7 @@ frame-ancestors 'none'; upgrade-insecure-requests
 | דף | באקט | תוכן |
 |----|------|------|
 | `DelekAdminPage` (יומן תדלוק) | `fuel-receipts` | קבלות (JPEG) — "צפה" פותח modal |
-| `VehicleYrmPage` (רכב יר״מ) | `vehicle-docs` | טופס יר״מ / רשיון (תמונה או PDF) |
+| `VehicleManagePage` (ניהול כלי רכב) | `vehicle-docs` | טופס / רשיון (תמונה או PDF), לדגמים עם `license` |
 
 **מלכודת:** הצגת PDF ב-iframe מצריכה `frame-src https://*.supabase.co blob:` ב-CSP (ראה סעיף 16). תמונות עובדות ממילא דרך `img-src`.
 

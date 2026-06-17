@@ -53,7 +53,14 @@ export function useIdleLogout() {
     const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
     events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
     document.addEventListener('visibilitychange', onVisibility);
-    reset();
+
+    // On (re)mount honor any stored timestamp instead of blindly resetting it.
+    // A PWA that was killed and relaunched a day later loses its setTimeout, so
+    // without this check it would silently start a fresh 30-min window and never
+    // log the stale session out. Compare the persisted last-activity first.
+    const lastSeen = Number(localStorage.getItem(STORAGE_KEY) || 0);
+    if (lastSeen && Date.now() - lastSeen >= IDLE_MS) logout();
+    else reset();
 
     return () => {
       cancelled = true;

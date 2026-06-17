@@ -53,9 +53,8 @@ const SECTIONS: NavSection[] = [
   },
   {
     id: 'vehicles', label: 'רכב', items: [
-      { to: '/vehicles/yrm', label: 'רכב יר״מ' },
-      { to: '/vehicles/white', label: 'רכב לבן' },
-      { to: '/vehicles/military', label: 'רכבים צבאיים' },
+      { to: '/vehicles/manage', label: 'ניהול כלי רכב' },
+      { to: '/vehicles/summary', label: 'סיכום רכבים' },
     ],
   },
   {

@@ -10,8 +10,41 @@ import {
   type WeaponsUnitChecks,
   type UnitAttendance,
 } from '../lib/dashboard';
-import { listVehiclesDueForTest, daysUntil, type Vehicle } from '../lib/vehicles';
+import {
+  listVehiclesFull,
+  daysUntil,
+  TEST_ALERT_DAYS,
+  VEHICLE_DOC_LABELS,
+  type VehicleFull,
+} from '../lib/vehicles';
 import { supabase } from '../lib/supabase';
+
+// A vehicle whose next-test mileage is within this many km of the current
+// mileage (or already exceeded) is due for a test by kilometrage.
+const MILEAGE_ALERT_KM = 5000;
+
+/** Next-test-by-date status. */
+function dateInfo(v: VehicleFull): { due: boolean; days: number | null } {
+  if (v.next_test_date == null) return { due: false, days: null };
+  const days = daysUntil(v.next_test_date);
+  return { due: days < TEST_ALERT_DAYS, days };
+}
+
+/** Next-test-by-kilometrage status (needs both the target range and current mileage). */
+function mileageInfo(v: VehicleFull): { due: boolean; remaining: number | null } {
+  if (v.next_test_range == null || v.mileage == null) return { due: false, remaining: null };
+  const remaining = v.next_test_range - v.mileage;
+  return { due: remaining <= MILEAGE_ALERT_KM, remaining };
+}
+
+/** True when any required detail wasn't entered (matches the summary screen's red cells). */
+function isIncomplete(v: VehicleFull): boolean {
+  if (!v.unit_id) return true;
+  if (v.next_test_date == null && v.next_test_range == null) return true;
+  if (v.mileage == null) return true;
+  if (v.license && VEHICLE_DOC_LABELS.some((l) => !v.documents.some((d) => d.name === l))) return true;
+  return false;
+}
 
 export default function DashboardPage() {
   const { profile } = useAuth();
@@ -22,7 +55,7 @@ export default function DashboardPage() {
   const [radio, setRadio] = useState<UnitPct[]>([]);
   const [weapons, setWeapons] = useState<WeaponsUnitChecks[]>([]);
   const [attendance, setAttendance] = useState<UnitAttendance[]>([]);
-  const [vehiclesDue, setVehiclesDue] = useState<Vehicle[]>([]);
+  const [vehicles, setVehicles] = useState<VehicleFull[]>([]);
   const [unitNames, setUnitNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const today = todayISO();
@@ -36,14 +69,14 @@ export default function DashboardPage() {
           radioGreenByUnit(scopeUnit),
           weaponsChecksByUnit(scopeUnit),
           attendanceDailyByUnit(today, scopeUnit),
-          listVehiclesDueForTest(scopeUnit),
+          listVehiclesFull(scopeUnit),
           supabase.from('units').select('id, name'),
         ]);
         if (cancelled) return;
         setRadio(r);
         setWeapons(w);
         setAttendance(a);
-        setVehiclesDue([...veh].sort((x, y) => daysUntil(x.next_test_date!) - daysUntil(y.next_test_date!)));
+        setVehicles(veh);
         setUnitNames(new Map(((units.data ?? []) as Array<{ id: string; name: string }>).map((u) => [u.id, u.name])));
       } finally {
         if (!cancelled) setLoading(false);
@@ -64,6 +97,28 @@ export default function DashboardPage() {
   );
   const completed = attendanceSorted.filter((u) => u.performed);
   const notCompleted = attendanceSorted.filter((u) => !u.performed);
+
+  // Vehicles missing some detail.
+  const incompleteVehicles = useMemo(
+    () => vehicles.filter(isIncomplete).sort((a, b) => a.car_plate.localeCompare(b.car_plate, 'he')),
+    [vehicles],
+  );
+
+  // Vehicles due for a test — by date (≤4 days / overdue) or by kilometrage
+  // (within 5000 km of the next-test range). Most urgent first.
+  const dueVehicles = useMemo(() => {
+    const urgency = (v: VehicleFull) => {
+      const vals: number[] = [];
+      const di = dateInfo(v);
+      const mi = mileageInfo(v);
+      if (di.due) vals.push(di.days!);                 // days remaining (negative = overdue)
+      if (mi.due) vals.push(mi.remaining! / 1250);     // ~km→day proxy (5000km ≈ 4)
+      return vals.length ? Math.min(...vals) : Infinity;
+    };
+    return vehicles
+      .filter((v) => dateInfo(v).due || mileageInfo(v).due)
+      .sort((a, b) => urgency(a) - urgency(b));
+  }, [vehicles]);
 
   return (
     <div className="space-y-6">
@@ -198,34 +253,67 @@ export default function DashboardPage() {
         </DashSection>
       </div>
 
-      {/* ── רכב: בדיקות קרובות ── */}
+      {/* ── רכב: חסרי פרטים + נדרשים לבדיקה ── */}
       <div>
         <h3 className="text-lg font-semibold mb-2">רכב</h3>
-        <DashSection
-          title="רכבים נדרשים לבדיקה"
-          subtitle="רכבים שבדיקתם הבאה בעוד פחות מ-4 ימים (או באיחור)"
-          to="/vehicles/summary"
-        >
-          {loading ? (
-            <SkeletonRows />
-          ) : vehiclesDue.length === 0 ? (
-            <div className="text-sm text-emerald-600 py-4 text-center">אין רכבים הנדרשים לבדיקה בימים הקרובים</div>
-          ) : (
-            <div className="space-y-1.5">
-              {vehiclesDue.map((v) => {
-                const d = daysUntil(v.next_test_date!);
-                return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <DashSection
+            title="רכבים חסרי פרטים"
+            subtitle="רכבים שלא הוזנו לגביהם כל הפרטים (מסגרת / בדיקה הבאה / קילומטרג׳ / מסמכים)"
+            to="/vehicles/summary"
+          >
+            {loading ? (
+              <SkeletonRows />
+            ) : incompleteVehicles.length === 0 ? (
+              <div className="text-sm text-emerald-600 py-4 text-center">לכל הרכבים הוזנו כל הפרטים</div>
+            ) : (
+              <div className="space-y-1.5">
+                {incompleteVehicles.map((v) => (
                   <div key={v.id} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="font-medium">{v.car_plate} · {unitNames.get(v.unit_id ?? '') ?? '—'}</span>
-                    <span className={`badge ${d < 0 ? 'bg-red-200 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
-                      {d < 0 ? `באיחור ${-d} ימים` : d === 0 ? 'היום' : `בעוד ${d} ימים`}
-                    </span>
+                    <span className="font-medium">{v.car_plate} · {v.type_name}</span>
+                    <span className="text-xs text-slate-500">{unitNames.get(v.unit_id ?? '') ?? 'ללא מסגרת'}</span>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </DashSection>
+                ))}
+              </div>
+            )}
+          </DashSection>
+
+          <DashSection
+            title="רכבים נדרשים לבדיקה"
+            subtitle="בדיקה הבאה בעוד פחות מ-4 ימים / באיחור, או פחות מ-5000 ק״מ לבדיקה"
+            to="/vehicles/summary"
+          >
+            {loading ? (
+              <SkeletonRows />
+            ) : dueVehicles.length === 0 ? (
+              <div className="text-sm text-emerald-600 py-4 text-center">אין רכבים הנדרשים לבדיקה</div>
+            ) : (
+              <div className="space-y-1.5">
+                {dueVehicles.map((v) => {
+                  const di = dateInfo(v);
+                  const mi = mileageInfo(v);
+                  return (
+                    <div key={v.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="font-medium">{v.car_plate} · {unitNames.get(v.unit_id ?? '') ?? '—'}</span>
+                      <span className="flex gap-1 flex-wrap justify-end">
+                        {di.due && (
+                          <span className={`badge ${di.days! < 0 ? 'bg-red-200 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
+                            {di.days! < 0 ? `באיחור ${-di.days!} ימים` : di.days === 0 ? 'היום' : `בעוד ${di.days} ימים`}
+                          </span>
+                        )}
+                        {mi.due && (
+                          <span className={`badge ${mi.remaining! < 0 ? 'bg-red-200 text-red-800' : 'bg-amber-100 text-amber-800'}`}>
+                            {mi.remaining! < 0 ? `חריגה ${-mi.remaining!} ק״מ` : `נותרו ${mi.remaining} ק״מ`}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </DashSection>
+        </div>
       </div>
     </div>
   );

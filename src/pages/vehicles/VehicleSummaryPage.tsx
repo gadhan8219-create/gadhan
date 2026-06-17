@@ -36,6 +36,7 @@ export default function VehicleSummaryPage() {
   const [vehicles, setVehicles] = useState<VehicleFull[]>([]);
   const [category, setCategory] = useState<VehicleCategory | ''>('');
   const [viewUnit, setViewUnit] = useState('');
+  const [plateQuery, setPlateQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewing, setViewing] = useState<{ path: string; title: string } | null>(null);
@@ -71,6 +72,9 @@ export default function VehicleSummaryPage() {
     return <div className="card text-center text-slate-500">לא משוייכת לך מסגרת — פנה למנהל מערכת</div>;
   }
 
+  const plateTrim = plateQuery.trim();
+  const shown = plateTrim ? vehicles.filter((v) => v.car_plate.includes(plateTrim)) : vehicles;
+
   // A cell is flagged when its value is missing.
   const missing = 'bg-red-50 text-red-700';
   const nextTestMissing = (v: VehicleFull) => v.next_test_date == null && v.next_test_range == null;
@@ -94,7 +98,11 @@ export default function VehicleSummaryPage() {
 
       {/* Filters */}
       <div className="card">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="label">חיפוש מספר רכב</label>
+            <input className="input" value={plateQuery} onChange={(e) => setPlateQuery(e.target.value)} placeholder="מספר רכב…" />
+          </div>
           <div>
             <label className="label">סוג</label>
             <select className="input" value={category} onChange={(e) => setCategory(e.target.value as VehicleCategory)}>
@@ -117,7 +125,7 @@ export default function VehicleSummaryPage() {
       {/* Table */}
       {loading ? (
         <div className="card text-center text-slate-400 py-12">טוען נתונים…</div>
-      ) : vehicles.length === 0 ? (
+      ) : shown.length === 0 ? (
         <div className="card text-center text-slate-400 py-12">אין רכבים להצגה</div>
       ) : (
         <div className="card p-0 overflow-x-auto max-w-full mx-auto">
@@ -135,7 +143,7 @@ export default function VehicleSummaryPage() {
               </tr>
             </thead>
             <tbody>
-              {vehicles.map((v) => (
+              {shown.map((v) => (
                 <tr key={v.id} onClick={() => setEditing(v)}
                   className="cursor-pointer hover:bg-slate-50 transition">
                   <td className="font-medium">{v.car_plate}</td>

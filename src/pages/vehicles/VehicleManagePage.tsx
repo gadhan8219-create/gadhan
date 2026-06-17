@@ -4,31 +4,26 @@ import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { PageTitle } from '../bunker/shared';
 import type { Unit } from '../../lib/database.types';
-import DocViewerModal from '../../components/DocViewerModal';
 import {
   listVehicleTypes,
   createVehicleType,
   deleteVehicleType,
-  listVehiclesFull,
   createVehicle,
-  updateVehicle,
-  deleteVehicle,
   uploadVehicleDoc,
   VEHICLE_CATEGORIES,
   VEHICLE_DOC_LABELS,
   type VehicleType,
   type VehicleCategory,
-  type VehicleFull,
-  type VehicleDoc,
 } from '../../lib/vehicles';
 
 type TestMode = 'date' | 'range';
 
 /**
  * רכב → ניהול כלי רכב.
- * One screen to (a) maintain the model catalog (vehicle_types: name + category +
- * whether documents are required) and (b) register full vehicles. Vehicles whose
- * model requires documents get the form + license upload, like the old יר״מ flow.
+ * Two jobs: maintain the model catalog (vehicle_types: name + category + whether
+ * documents are required) and register full vehicles. Vehicles whose model
+ * requires documents get the form + license upload inside the add form. Viewing
+ * and editing existing vehicles lives in the סיכום רכבים screen.
  */
 export default function VehicleManagePage() {
   const { profile } = useAuth();
@@ -38,11 +33,8 @@ export default function VehicleManagePage() {
 
   const [units, setUnits] = useState<Unit[]>([]);
   const [types, setTypes] = useState<VehicleType[]>([]);
-  const [vehicles, setVehicles] = useState<VehicleFull[]>([]);
-  const [viewUnit, setViewUnit] = useState(''); // admin list filter ('' = all)
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewing, setViewing] = useState<{ path: string; title: string } | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   // ── Catalog form (admin) ─────────────────────────────────────────────────
   const [tName, setTName] = useState('');
@@ -67,9 +59,7 @@ export default function VehicleManagePage() {
     return (id: string | null) => (id ? m.get(id) ?? '—' : '—');
   }, [units]);
 
-  const listUnit = isAdmin ? (viewUnit || null) : raspUnitId;
   const selectedType = types.find((t) => t.id === vTypeId) ?? null;
-  // Models available for the chosen category.
   const modelsForCategory = vCategory ? types.filter((t) => t.type === vCategory) : [];
 
   useEffect(() => {
@@ -83,17 +73,6 @@ export default function VehicleManagePage() {
     catch (e) { setError((e as Error).message); }
   }
   useEffect(() => { reloadTypes(); }, []);
-
-  async function reloadVehicles() {
-    setLoading(true);
-    try { setVehicles(await listVehiclesFull(listUnit)); }
-    catch (e) { setError((e as Error).message); }
-    finally { setLoading(false); }
-  }
-  useEffect(() => {
-    reloadVehicles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewUnit, raspUnitId]);
 
   // ── Catalog actions ────────────────────────────────────────────────────────
   async function addType() {
@@ -126,7 +105,7 @@ export default function VehicleManagePage() {
     if (!unit) { setError('נא לבחור מסגרת'); return; }
     if (!vCategory) { setError('נא לבחור סוג'); return; }
     if (!vTypeId) { setError('נא לבחור שם כלי'); return; }
-    setSavingVehicle(true); setError(null);
+    setSavingVehicle(true); setError(null); setSuccess(null);
     try {
       const created = await createVehicle({
         car_plate: plate,
@@ -143,39 +122,10 @@ export default function VehicleManagePage() {
           if (f) await uploadVehicleDoc(created, label, f);
         }
       }
+      setSuccess(`הרכב ${created.car_plate} נוסף`);
       resetVehicleForm();
-      await reloadVehicles();
     } catch (e) { setError((e as Error).message); }
     finally { setSavingVehicle(false); }
-  }
-
-  // ── Vehicle-row actions ──────────────────────────────────────────────────
-  async function saveRow(v: VehicleFull, patch: Partial<VehicleFull>) {
-    try {
-      await updateVehicle(v.id, patch);
-      setVehicles((prev) => prev.map((x) => (x.id === v.id ? { ...x, ...patch } : x)));
-    } catch (e) { setError((e as Error).message); }
-  }
-
-  async function onUpload(v: VehicleFull, label: string, file: File) {
-    setError(null);
-    try {
-      const docs = await uploadVehicleDoc(v, label, file);
-      setVehicles((prev) => prev.map((x) => (x.id === v.id ? { ...x, documents: docs } : x)));
-    } catch (e) { setError((e as Error).message); }
-  }
-
-  async function onRemove(id: string) {
-    if (!confirm('למחוק את הרכב?')) return;
-    try {
-      await deleteVehicle(id);
-      setVehicles((prev) => prev.filter((x) => x.id !== id));
-    } catch (e) { setError((e as Error).message); }
-  }
-
-  function openDoc(v: VehicleFull, doc: VehicleDoc) {
-    setError(null);
-    setViewing({ path: doc.path ?? doc.url ?? '', title: `${doc.name} — ${v.car_plate}` });
   }
 
   if (!isAdmin && !isRaspar) return <Navigate to="/" replace />;
@@ -191,6 +141,12 @@ export default function VehicleManagePage() {
         <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm flex justify-between">
           {error}
           <button onClick={() => setError(null)} className="text-red-500 hover:text-red-800 ml-2">×</button>
+        </div>
+      )}
+      {success && (
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-emerald-800 text-sm flex justify-between">
+          {success}
+          <button onClick={() => setSuccess(null)} className="text-emerald-600 hover:text-emerald-900 ml-2">×</button>
         </div>
       )}
 
@@ -318,94 +274,6 @@ export default function VehicleManagePage() {
           {savingVehicle ? 'שומר…' : '+ הוסף רכב'}
         </button>
       </div>
-
-      {/* Admin list filter */}
-      {isAdmin && (
-        <div className="card">
-          <label className="label">סינון לפי מסגרת</label>
-          <select className="input" value={viewUnit} onChange={(e) => setViewUnit(e.target.value)}>
-            <option value="">כל המסגרות</option>
-            {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
-        </div>
-      )}
-
-      {/* Vehicle list */}
-      <div className="space-y-3">
-        {loading ? (
-          <div className="card text-center text-slate-400 text-sm py-8">טוען…</div>
-        ) : vehicles.length === 0 ? (
-          <div className="card text-center text-slate-400 text-sm py-8">אין רכבים להצגה</div>
-        ) : (
-          vehicles.map((v) => (
-            <div key={v.id} className="card space-y-3">
-              <div className="flex items-start justify-between gap-2 flex-wrap">
-                <div>
-                  <div className="text-lg font-bold">{v.car_plate}</div>
-                  <div className="text-sm text-slate-500">
-                    {v.type_name} · {v.category} · {unitName(v.unit_id)}
-                  </div>
-                </div>
-                <button onClick={() => onRemove(v.id)} className="text-red-500 hover:text-red-700 text-sm">מחק</button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="label">בדיקה הבאה (תאריך)</label>
-                  <input type="date" className="input" value={v.next_test_date ?? ''}
-                    onChange={(e) => saveRow(v, { next_test_date: e.target.value || null })} />
-                </div>
-                <div>
-                  <label className="label">בדיקה הבאה (ק"מ)</label>
-                  <input type="number" className="input" defaultValue={v.next_test_range ?? ''}
-                    onBlur={(e) => saveRow(v, { next_test_range: e.target.value ? Number(e.target.value) : null })} placeholder='ק"מ' />
-                </div>
-                <div>
-                  <label className="label">קילומטרג׳ נוכחי</label>
-                  <input type="number" className="input" defaultValue={v.mileage ?? ''}
-                    onBlur={(e) => saveRow(v, { mileage: e.target.value ? Number(e.target.value) : null })} placeholder='ק"מ' />
-                </div>
-              </div>
-
-              {/* Documents — only for models that require them */}
-              {v.license && (
-                <div>
-                  <label className="label">מסמכים</label>
-                  <div className="flex flex-wrap gap-2">
-                    {VEHICLE_DOC_LABELS.map((label) => {
-                      const doc = v.documents.find((d) => d.name === label);
-                      return (
-                        <div key={label} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                          <span className="font-medium">{label}:</span>
-                          {doc ? (
-                            <button type="button" onClick={() => openDoc(v, doc)} className="text-sky-600 hover:underline">צפה</button>
-                          ) : (
-                            <span className="text-slate-400">אין</span>
-                          )}
-                          <label className="text-sky-600 hover:underline cursor-pointer">
-                            {doc ? 'החלף' : 'העלה'}
-                            <input type="file" accept="image/*,application/pdf" className="hidden"
-                              onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(v, label, f); e.target.value = ''; }} />
-                          </label>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-
-      {viewing && (
-        <DocViewerModal
-          bucket="vehicle-docs"
-          pathOrUrl={viewing.path}
-          title={viewing.title}
-          onClose={() => setViewing(null)}
-        />
-      )}
     </div>
   );
 }

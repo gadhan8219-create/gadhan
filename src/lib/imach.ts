@@ -213,6 +213,20 @@ export async function setSoldierBag(
   if (error) throw error;
 }
 
+export interface SoldierBagItem { itemName: string; uom: string | null; quantity: number }
+
+/** A single soldier's fighter-bag contents (item name + uom + quantity). */
+export async function loadSoldierBagItems(soldierId: string): Promise<SoldierBagItem[]> {
+  const { data, error } = await supabase
+    .from('soldier_bags')
+    .select('quantity, storage_items(name, uom)')
+    .eq('soldier_id', soldierId);
+  if (error) throw error;
+  return ((data ?? []) as unknown as Array<{ quantity: number; storage_items: { name: string; uom: string | null } | null }>)
+    .map((r) => ({ itemName: r.storage_items?.name ?? '—', uom: r.storage_items?.uom ?? null, quantity: num(r.quantity) }))
+    .sort((a, b) => a.itemName.localeCompare(b.itemName, 'he'));
+}
+
 /** Delete a generic bag entirely. */
 export async function deleteGenericBag(unitId: string, bagLabel: string): Promise<void> {
   const { error } = await supabase.from('soldier_bags').delete()

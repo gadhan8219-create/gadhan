@@ -305,6 +305,7 @@ interface PdfCallArgs {
 - **סיכום לפי צ׳**: `DisplayRow` צובר `zeroedCount` + `zeroedNotes[]`; שורה מאופסנת מציגה תג "מאופסן" (×N לכמות) + ההערות ליד שם הפריט.
 - **עמוד חיילים (מודאל פריטים חתומים)**: `heldItems.ts` מקבץ פריטי כמות של נשק לפי `(שם, is_zeroed)` כך שפריט כמות מאופסן מוצג בנפרד עם תג "מאופסן: <הערה>" (`HeldItem.zeroedNote`). באג קודם: פריט כמות מאופסן לא הוצג כמאופסן.
 - **עמוד חיילים — דוח 1 בחייל**: מודאל החייל מציג סקשן **"דוח 1"** עם **בורר טווח תאריכים** (מתאריך/עד תאריך + "נקה"). `getSoldierAttendance(soldierId, { from?, to?, limit? })` (ב-`attendance.ts`) — ללא טווח מחזיר את 14 האחרונים, עם טווח מריץ `gte/lte` על `date`. נטען ב-`useEffect` על `[selected, attFrom, attTo]` (לא ב-`openSoldier`). embed `attendance_statuses(status)`.
+- **עמוד חיילים — תיק לוחם במודאל**: מודאל החייל מציג גם סקשן **"תיק לוחם"** (בין "פריטים חתומים" ל"דוח 1") — `loadSoldierBagItems(soldierId)` מ-`lib/imach.ts` מחזיר את פריטי ה-`soldier_bags` של החייל (שם+יח״מ+כמות). נטען במקביל ב-`openSoldier`.
 - **עמוד חיילים — הוסר כפתור ה-PDF במודאל**: כפתור "הצג PDF עדכני" (קשר, `signing-pdfs/<id>.pdf`) הוסר מהמודאל לבקשת המשתמש (יחד עם `openSigningPdf`/`signedUrl` שם). ה-PDF של הקשר עדיין נגיש מ-`SigningsPage`. PDF נשק לא נחשף במודאל (נשמר ב-Drive, הקישור לא נשמר per-חייל).
 
 ### אותו דפוס שקט נסרק בשאר זרימות הנשק (2026-06-16)

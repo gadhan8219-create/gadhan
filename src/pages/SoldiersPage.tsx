@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 import { logAudit } from '../lib/audit';
 import { loadSoldierHeldItems, type HeldItem } from '../lib/heldItems';
 import { getSoldierAttendance, type SoldierAttendanceRow } from '../lib/attendance';
+import { loadSoldierBagItems, type SoldierBagItem } from '../lib/imach';
 import type { Soldier, Team, Unit } from '../lib/database.types';
 
 export default function SoldiersPage() {
@@ -16,6 +17,7 @@ export default function SoldiersPage() {
   const [form, setForm] = useState({ full_name: '', personal_number: '', phone: '', unit_id: '', team_id: '' });
   const [selected, setSelected] = useState<Soldier | null>(null);
   const [heldItems, setHeldItems] = useState<HeldItem[] | null>(null);
+  const [bag, setBag] = useState<SoldierBagItem[] | null>(null);
   const [heldLoading, setHeldLoading] = useState(false);
   const [attendance, setAttendance] = useState<SoldierAttendanceRow[] | null>(null);
   const [attLoading, setAttLoading] = useState(false);
@@ -43,12 +45,18 @@ export default function SoldiersPage() {
   async function openSoldier(s: Soldier) {
     setSelected(s);
     setHeldItems(null);
+    setBag(null);
     setAttendance(null);
     setAttFrom('');
     setAttTo('');
     setHeldLoading(true);
     try {
-      setHeldItems(await loadSoldierHeldItems(s.id, s.personal_number));
+      const [held, bagItems] = await Promise.all([
+        loadSoldierHeldItems(s.id, s.personal_number),
+        loadSoldierBagItems(s.id),
+      ]);
+      setHeldItems(held);
+      setBag(bagItems);
     } finally {
       setHeldLoading(false);
     }
@@ -269,6 +277,22 @@ export default function SoldiersPage() {
                   );
                 })}
               </div>
+            )}
+
+            <div className="text-sm font-semibold text-slate-700 mb-2 mt-5">תיק לוחם</div>
+            {heldLoading ? (
+              <div className="text-sm text-slate-500">טוען...</div>
+            ) : !bag || bag.length === 0 ? (
+              <div className="text-sm text-slate-500">אין תיק לוחם</div>
+            ) : (
+              <ul className="text-sm space-y-1 max-h-48 overflow-auto">
+                {bag.map((b) => (
+                  <li key={b.itemName} className="flex justify-between border-b border-slate-100 py-1.5">
+                    <span>{b.itemName}{b.uom && <span className="text-slate-400 text-xs"> {b.uom}</span>}</span>
+                    <span className="text-slate-600">x{b.quantity}</span>
+                  </li>
+                ))}
+              </ul>
             )}
 
             <div className="text-sm font-semibold text-slate-700 mb-2 mt-5">דוח 1</div>

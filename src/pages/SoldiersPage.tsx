@@ -51,7 +51,7 @@ export default function SoldiersPage() {
     setHeldItems(null);
     setHeldLoading(true);
     try {
-      const held = await loadSoldierHeldItems(s.id);
+      const held = await loadSoldierHeldItems(s.id, s.personal_number);
       setHeldItems(held);
     } finally {
       setHeldLoading(false);
@@ -239,22 +239,36 @@ export default function SoldiersPage() {
             ) : !heldItems || heldItems.length === 0 ? (
               <div className="text-sm text-slate-500">אין פריטים חתומים</div>
             ) : (
-              <ul className="text-sm space-y-1 max-h-72 overflow-auto">
-                {heldItems.map((h) => (
-                  <li
-                    key={`${h.itemId}::${h.serialNumber ?? ''}`}
-                    className="flex justify-between border-b border-slate-100 py-1.5"
-                  >
-                    <span>
-                      {h.itemName}
-                      {h.serialNumber && (
-                        <span className="text-slate-500 text-xs"> [צ' {h.serialNumber}]</span>
-                      )}
-                    </span>
-                    <span className="text-slate-600">x{h.quantity}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="max-h-72 overflow-auto space-y-3">
+                {([['weapons', 'נשק'], ['radio', 'קשר']] as const).map(([src, label]) => {
+                  const group = heldItems.filter((h) => h.source === src);
+                  if (group.length === 0) return null;
+                  return (
+                    <div key={src}>
+                      <div className="text-xs font-semibold text-slate-400 mb-1">{label}</div>
+                      <ul className="text-sm space-y-1">
+                        {group.map((h) => (
+                          <li
+                            key={`${h.itemId}::${h.serialNumber ?? ''}`}
+                            className="flex justify-between border-b border-slate-100 py-1.5"
+                          >
+                            <span>
+                              {h.itemName}
+                              {h.serialNumber && (
+                                <span className="text-slate-500 text-xs"> [צ' {h.serialNumber}]</span>
+                              )}
+                              {h.zeroed && (
+                                <span className="badge bg-orange-100 text-orange-700 text-xs mr-1">מאופסן</span>
+                              )}
+                            </span>
+                            <span className="text-slate-600">x{h.quantity}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>

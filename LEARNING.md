@@ -103,7 +103,7 @@ interface Profile {
 | `lib/auth.tsx` | AuthContext, useAuth, AuthProvider |
 | `lib/database.types.ts` | TypeScript types לכל הטבלאות |
 | `lib/audit.ts` | כתיבה ל-audit_logs |
-| `lib/heldItems.ts` | פריטים בחזקת חיילים |
+| `lib/heldItems.ts` | פריטים בחזקת חייל — **שני המודולים**: קשר (signings/signing_items לפי soldier_id) + נשק (weapons_item_serials לפי assigned_to_pn; שורות `__qty__` מקובצות לספירה, `zeroed` מסומן). `loadSoldierHeldItems(soldierId, personalNumber?)` מחזיר `HeldItem[]` עם `source: 'radio'|'weapons'`. מוצג ב-SoldiersPage מודאל מקובץ לפי מודול (נשק/קשר). |
 | `lib/itemHolders.ts` | מחזיקי פריט |
 | `lib/itemSerials.ts` | סריאלים של פריטים |
 | `lib/serialInspections.ts` | בדיקות סריאלים |

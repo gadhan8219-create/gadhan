@@ -4,18 +4,7 @@ import { useAuth } from '../lib/auth';
 import { logAudit } from '../lib/audit';
 import { loadSoldierHeldItems, type HeldItem } from '../lib/heldItems';
 import { getSoldierAttendance, type SoldierAttendanceRow } from '../lib/attendance';
-import { signedUrl } from '../lib/storage';
 import type { Soldier, Team, Unit } from '../lib/database.types';
-
-/** Signing PDFs live at "<soldier_id>.pdf" in the private signing-pdfs bucket. */
-async function openSigningPdf(soldierId: string) {
-  try {
-    const url = await signedUrl('signing-pdfs', `${soldierId}.pdf`);
-    window.open(url, '_blank', 'noopener');
-  } catch (e) {
-    alert((e as Error).message);
-  }
-}
 
 export default function SoldiersPage() {
   const { profile } = useAuth();
@@ -29,6 +18,9 @@ export default function SoldiersPage() {
   const [heldItems, setHeldItems] = useState<HeldItem[] | null>(null);
   const [heldLoading, setHeldLoading] = useState(false);
   const [attendance, setAttendance] = useState<SoldierAttendanceRow[] | null>(null);
+  const [attLoading, setAttLoading] = useState(false);
+  const [attFrom, setAttFrom] = useState('');
+  const [attTo, setAttTo] = useState('');
   const isAdmin = profile?.role === 'admin';
 
   async function load() {
@@ -52,18 +44,28 @@ export default function SoldiersPage() {
     setSelected(s);
     setHeldItems(null);
     setAttendance(null);
+    setAttFrom('');
+    setAttTo('');
     setHeldLoading(true);
     try {
-      const [held, att] = await Promise.all([
-        loadSoldierHeldItems(s.id, s.personal_number),
-        getSoldierAttendance(s.id),
-      ]);
-      setHeldItems(held);
-      setAttendance(att);
+      setHeldItems(await loadSoldierHeldItems(s.id, s.personal_number));
     } finally {
       setHeldLoading(false);
     }
   }
+
+  // Load (and reload) the soldier's דוח 1 entries whenever the selection or the
+  // date range changes. Empty range = the most recent entries.
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    setAttLoading(true);
+    getSoldierAttendance(selected.id, { from: attFrom || null, to: attTo || null })
+      .then((rows) => { if (!cancelled) setAttendance(rows); })
+      .catch(() => { if (!cancelled) setAttendance([]); })
+      .finally(() => { if (!cancelled) setAttLoading(false); });
+    return () => { cancelled = true; };
+  }, [selected, attFrom, attTo]);
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
@@ -229,17 +231,6 @@ export default function SoldiersPage() {
               </button>
             </div>
 
-            {selected.pdf_url && (
-              <div className="mb-3">
-                <button
-                  type="button"
-                  onClick={() => openSigningPdf(selected.id)}
-                  className="text-sm text-emerald-700 hover:underline"
-                >
-                  הצג PDF עדכני
-                </button>
-              </div>
-            )}
             <div className="text-sm font-semibold text-slate-700 mb-2">פריטים חתומים</div>
             {heldLoading ? (
               <div className="text-sm text-slate-500">טוען...</div>
@@ -281,7 +272,23 @@ export default function SoldiersPage() {
             )}
 
             <div className="text-sm font-semibold text-slate-700 mb-2 mt-5">דוח 1</div>
-            {heldLoading ? (
+            <div className="flex items-end gap-2 mb-2">
+              <div className="flex-1">
+                <label className="label text-xs">מתאריך</label>
+                <input type="date" className="input !py-1.5 text-sm" value={attFrom}
+                  max={attTo || undefined} onChange={(e) => setAttFrom(e.target.value)} />
+              </div>
+              <div className="flex-1">
+                <label className="label text-xs">עד תאריך</label>
+                <input type="date" className="input !py-1.5 text-sm" value={attTo}
+                  min={attFrom || undefined} onChange={(e) => setAttTo(e.target.value)} />
+              </div>
+              {(attFrom || attTo) && (
+                <button type="button" onClick={() => { setAttFrom(''); setAttTo(''); }}
+                  className="text-xs text-slate-400 hover:text-slate-700 pb-2">נקה</button>
+              )}
+            </div>
+            {attLoading ? (
               <div className="text-sm text-slate-500">טוען...</div>
             ) : !attendance || attendance.length === 0 ? (
               <div className="text-sm text-slate-500">אין דיווחי נוכחות</div>

@@ -82,14 +82,24 @@ export async function getAttendanceForDate(date: string): Promise<AttendanceReco
 
 export interface SoldierAttendanceRow { date: string; status: string; }
 
-// Recent דוח 1 entries for one soldier (most recent first), with the status text.
-export async function getSoldierAttendance(soldierId: string, limit = 14): Promise<SoldierAttendanceRow[]> {
-  const { data, error } = await supabase
+/**
+ * דוח 1 entries for one soldier (most recent first), with the status text.
+ * With no date bounds, returns the most recent `limit` rows; pass `from`/`to`
+ * (YYYY-MM-DD) to fetch a specific day or range instead.
+ */
+export async function getSoldierAttendance(
+  soldierId: string,
+  opts: { from?: string | null; to?: string | null; limit?: number } = {},
+): Promise<SoldierAttendanceRow[]> {
+  let q = supabase
     .from('attendance')
     .select('date, attendance_statuses(status)')
     .eq('soldier_id', soldierId)
-    .order('date', { ascending: false })
-    .limit(limit);
+    .order('date', { ascending: false });
+  if (opts.from) q = q.gte('date', opts.from);
+  if (opts.to) q = q.lte('date', opts.to);
+  if (!opts.from && !opts.to) q = q.limit(opts.limit ?? 14);
+  const { data, error } = await q;
   if (error) throw error;
   return ((data ?? []) as unknown as Array<{ date: string; attendance_statuses: { status: string } | null }>)
     .map((r) => ({ date: r.date, status: r.attendance_statuses?.status ?? '—' }));

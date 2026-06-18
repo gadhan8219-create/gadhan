@@ -297,7 +297,8 @@ interface PdfCallArgs {
 - **מודאל פירוט (לחיצה על כמות פריט למסגרת ב"סיכום כמותי")**: כותרת מציגה "· N מאופסן"; checkbox **"מאופסן בלבד"** (`detailZeroedOnly`) מציג רשימה שטוחה של המאופסנים בלבד, ממוינת לפי חייל, עם עמודת **הערה**. בתצוגה הרגילה: פריט סריאלי מציג תג "מאופסן: <הערה>" ליד הצ׳; פריט כמות מציג "N מאופסן" ליד הספירה ל-pn. (העמודה הנפרדת "סה״כ מאופסן" + `zeroedModal` שנוספו קודם — **בוטלו** לבקשת המשתמש.)
 - **סיכום לפי צ׳**: `DisplayRow` צובר `zeroedCount` + `zeroedNotes[]`; שורה מאופסנת מציגה תג "מאופסן" (×N לכמות) + ההערות ליד שם הפריט.
 - **עמוד חיילים (מודאל פריטים חתומים)**: `heldItems.ts` מקבץ פריטי כמות של נשק לפי `(שם, is_zeroed)` כך שפריט כמות מאופסן מוצג בנפרד עם תג "מאופסן: <הערה>" (`HeldItem.zeroedNote`). באג קודם: פריט כמות מאופסן לא הוצג כמאופסן.
-- **עמוד חיילים — דוח 1 בחייל**: מודאל החייל מציג גם סקשן **"דוח 1"** — `getSoldierAttendance(soldierId, limit=14)` (ב-`attendance.ts`) מחזיר את דיווחי הנוכחות האחרונים (תאריך + סטטוס, מהחדש לישן) דרך embed `attendance_statuses(status)`. נטען במקביל ל-`loadSoldierHeldItems` ב-`openSoldier`.
+- **עמוד חיילים — דוח 1 בחייל**: מודאל החייל מציג סקשן **"דוח 1"** עם **בורר טווח תאריכים** (מתאריך/עד תאריך + "נקה"). `getSoldierAttendance(soldierId, { from?, to?, limit? })` (ב-`attendance.ts`) — ללא טווח מחזיר את 14 האחרונים, עם טווח מריץ `gte/lte` על `date`. נטען ב-`useEffect` על `[selected, attFrom, attTo]` (לא ב-`openSoldier`). embed `attendance_statuses(status)`.
+- **עמוד חיילים — הוסר כפתור ה-PDF במודאל**: כפתור "הצג PDF עדכני" (קשר, `signing-pdfs/<id>.pdf`) הוסר מהמודאל לבקשת המשתמש (יחד עם `openSigningPdf`/`signedUrl` שם). ה-PDF של הקשר עדיין נגיש מ-`SigningsPage`. PDF נשק לא נחשף במודאל (נשמר ב-Drive, הקישור לא נשמר per-חייל).
 
 ### אותו דפוס שקט נסרק בשאר זרימות הנשק (2026-06-16)
 `/weapons/transfer` פתוח גם הוא לרס״פ. כל הפעולות שם נכתבו ב-`await supabase…update/insert(...)` **בלי בדיקת `error`** ובלי `.select('id')` — אותו class של כשל שקט. תוקן ב-`WeaponsTransferPage`:

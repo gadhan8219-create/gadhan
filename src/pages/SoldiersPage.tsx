@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { logAudit } from '../lib/audit';
 import { loadSoldierHeldItems, type HeldItem } from '../lib/heldItems';
+import { getSoldierAttendance, type SoldierAttendanceRow } from '../lib/attendance';
 import { signedUrl } from '../lib/storage';
 import type { Soldier, Team, Unit } from '../lib/database.types';
 
@@ -27,6 +28,7 @@ export default function SoldiersPage() {
   const [selected, setSelected] = useState<Soldier | null>(null);
   const [heldItems, setHeldItems] = useState<HeldItem[] | null>(null);
   const [heldLoading, setHeldLoading] = useState(false);
+  const [attendance, setAttendance] = useState<SoldierAttendanceRow[] | null>(null);
   const isAdmin = profile?.role === 'admin';
 
   async function load() {
@@ -49,10 +51,15 @@ export default function SoldiersPage() {
   async function openSoldier(s: Soldier) {
     setSelected(s);
     setHeldItems(null);
+    setAttendance(null);
     setHeldLoading(true);
     try {
-      const held = await loadSoldierHeldItems(s.id, s.personal_number);
+      const [held, att] = await Promise.all([
+        loadSoldierHeldItems(s.id, s.personal_number),
+        getSoldierAttendance(s.id),
+      ]);
       setHeldItems(held);
+      setAttendance(att);
     } finally {
       setHeldLoading(false);
     }
@@ -271,6 +278,22 @@ export default function SoldiersPage() {
                   );
                 })}
               </div>
+            )}
+
+            <div className="text-sm font-semibold text-slate-700 mb-2 mt-5">דוח 1</div>
+            {heldLoading ? (
+              <div className="text-sm text-slate-500">טוען...</div>
+            ) : !attendance || attendance.length === 0 ? (
+              <div className="text-sm text-slate-500">אין דיווחי נוכחות</div>
+            ) : (
+              <ul className="text-sm space-y-1 max-h-48 overflow-auto">
+                {attendance.map((a) => (
+                  <li key={a.date} className="flex justify-between border-b border-slate-100 py-1.5">
+                    <span className="text-slate-600">{new Date(a.date + 'T00:00:00').toLocaleDateString('he-IL')}</span>
+                    <span className="font-medium">{a.status}</span>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </div>

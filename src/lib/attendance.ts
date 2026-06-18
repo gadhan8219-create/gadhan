@@ -80,6 +80,21 @@ export async function getAttendanceForDate(date: string): Promise<AttendanceReco
   return (data ?? []) as AttendanceRecord[];
 }
 
+export interface SoldierAttendanceRow { date: string; status: string; }
+
+// Recent דוח 1 entries for one soldier (most recent first), with the status text.
+export async function getSoldierAttendance(soldierId: string, limit = 14): Promise<SoldierAttendanceRow[]> {
+  const { data, error } = await supabase
+    .from('attendance')
+    .select('date, attendance_statuses(status)')
+    .eq('soldier_id', soldierId)
+    .order('date', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return ((data ?? []) as unknown as Array<{ date: string; attendance_statuses: { status: string } | null }>)
+    .map((r) => ({ date: r.date, status: r.attendance_statuses?.status ?? '—' }));
+}
+
 // Upserts one row per soldier for the date. Re-confirming overwrites.
 export async function confirmAttendance(date: string, records: AttendanceInput[]): Promise<void> {
   const { error } = await supabase.rpc('attendance_confirm_report', {

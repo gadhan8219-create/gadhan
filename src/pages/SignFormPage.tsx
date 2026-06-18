@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { logAudit } from '../lib/audit';
 import { loadSoldierHeldItems, type HeldItem } from '../lib/heldItems';
+import { fireDrivePdf } from '../lib/drivePdf';
 import { loadUnitAvailability, type UnitAvailability } from '../lib/unitStock';
 import type { Item, Soldier, Team, Unit } from '../lib/database.types';
 import SignaturePad, { type SignaturePadHandle } from '../components/SignaturePad';
@@ -155,19 +156,32 @@ export default function SignFormPage() {
   function addLine()              { setLines((prev) => [...prev, { itemId: '', quantity: 1, serialNumber: '' }]); }
   function removeLine(idx: number){ setLines((prev) => prev.filter((_, i) => i !== idx)); }
 
-  // ── PDF (fire-and-forget) ────────────────────────────────────────────────────
+  // ── PDF (fire-and-forget → Google Drive) ──────────────────────────────────────
+  // The signing sheet is the soldier's CURRENT radio inventory, stored at
+  // קשר/<מסגרת>/החתמות/<שם>.pdf (overwritten each signing). Same Drive mechanism
+  // the weapons module uses.
 
-  function firePdf(signingId: string, signaturePng: string) {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-signing-pdf`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session?.access_token ?? ''}`,
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ signing_id: signingId, signature_png_b64: signaturePng }),
-      }).catch(() => {});
+  async function fireSigningPdf(
+    soldierId: string,
+    soldier: { full_name: string; personal_number: string; phone?: string; unitName: string; teamName?: string },
+    signaturePng: string,
+  ) {
+    const held = await loadSoldierHeldItems(soldierId); // radio items only (no PN)
+    fireDrivePdf({
+      title: 'החתמת ציוד קשר',
+      note: 'סיכום נוכחי',
+      entity: {
+        full_name: soldier.full_name,
+        personal_number: soldier.personal_number,
+        phone: soldier.phone,
+        unit_name: soldier.unitName,
+        team_name: soldier.teamName,
+      },
+      items: held.map((h) => ({ name: h.itemName, quantity: h.quantity, serial: h.serialNumber })),
+      performed_by: profile?.full_name ?? '',
+      signature_png_b64: signaturePng,
+      drive_path: ['קשר', soldier.unitName, 'החתמות'],
+      filename: `${soldier.full_name}.pdf`,
     });
   }
 
@@ -270,8 +284,17 @@ export default function SignFormPage() {
       // Show success immediately
       setFeedback({ type: 'success', msg: 'נשמר בהצלחה' });
 
-      // Fire PDF in background (no await)
-      firePdf(signing.id, sigPadRef.current!.toDataUrl());
+      // Fire PDF in background (no await) — to Drive at קשר/<מסגרת>/החתמות.
+      const uName = units.find((u) => u.id === finalUnitId)?.name ?? '—';
+      const tName = finalTeamId ? teams.find((t) => t.id === finalTeamId)?.name : undefined;
+      const sFullName = useExisting ? (selectedSoldier?.full_name ?? '') : newSoldier.full_name;
+      const sPN = useExisting ? (selectedSoldier?.personal_number ?? '') : newSoldier.personal_number;
+      const sPhone = useExisting ? (selectedSoldier?.phone ?? undefined) : newSoldier.phone;
+      void fireSigningPdf(
+        finalSoldierId,
+        { full_name: sFullName, personal_number: sPN, phone: sPhone, unitName: uName, teamName: tName },
+        sigPadRef.current!.toDataUrl(),
+      );
 
       // Reset
       setLines([{ itemId: '', quantity: 1, serialNumber: '' }]);

@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { logAudit } from '../lib/audit';
 import { loadUnitHeldForReturn } from '../lib/unitStock';
 import { loadBattalionSerials } from '../lib/itemSerials';
+import { fireDrivePdf } from '../lib/drivePdf';
 import type { Item, Unit, UnitSigningType } from '../lib/database.types';
 
 // For bulk items (no registered serials), `quantity` is user-entered and
@@ -208,6 +209,29 @@ export default function UnitSignFormPage() {
       });
 
       setFeedback({ type: 'success', msg: `נשמר בהצלחה (${inserts.length} פריטים)` });
+
+      // Framework return → fire a זיכויי מסגרת PDF to Drive at קשר/<מסגרת>/זיכויים.
+      // Dated filename so each return is preserved (no single soldier to key on).
+      if (isReturn) {
+        const uName = units.find((u) => u.id === unitId)?.name ?? '—';
+        const now = new Date();
+        const p2 = (n: number) => String(n).padStart(2, '0');
+        const stamp = `${p2(now.getDate())}-${p2(now.getMonth() + 1)}-${now.getFullYear()}_${p2(now.getHours())}-${p2(now.getMinutes())}`;
+        fireDrivePdf({
+          title: 'זיכוי ציוד קשר — מסגרת',
+          note: uName,
+          entity: { full_name: uName, personal_number: '—', unit_name: uName },
+          items: inserts.map((i) => ({
+            name: items.find((it) => it.id === i.item_id)?.name ?? '—',
+            quantity: i.quantity,
+            serial: i.serial_number,
+          })),
+          performed_by: profile.full_name,
+          drive_path: ['קשר', uName, 'זיכויים'],
+          filename: `${uName} ${stamp}.pdf`,
+        });
+      }
+
       // serials just got allocated/returned — refresh the cache before resetting the form
       await refreshAllBattalionSerials().catch(() => {});
       setLines([{ ...EMPTY_LINE }]);

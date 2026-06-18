@@ -164,6 +164,11 @@ WEAPONS_CHECKOUT_DRIVE_FOLDER_ID — Root folder ID ב-Drive
 - זיכויים: PDF זיכוי — נוצר/מוחלף בכל זיכוי
 - אם זיכוי חלקי: גם `החתמות/{soldier_name}.pdf` מתעדכן עם הפריטים שנותרו
 
+**קשר עבר ל-Drive (2026-06-17)** — אותו edge function `generate-weapon-checkout-pdf` (גנרי) משמש גם את הקשר; אין redeploy. `src/lib/drivePdf.ts` (`fireDrivePdf`) הוא העטיפה המשותפת (ממפה `entity`→`soldier`). מבנה: `ROOT/קשר/{unit_name}/החתמות|זיכויים/...`.
+- **החתמה (חייל)** — `SignFormPage` יורה PDF "החתמת ציוד קשר" עם **המצאי הנוכחי** של החייל (`loadSoldierHeldItems`) + חתימה → `קשר/{מסגרת}/החתמות/{שם החייל}.pdf` (מוחלף בכל החתמה). **הוסר** השימוש ב-`generate-signing-pdf` (Supabase bucket `signing-pdfs`) — ה-edge function נשאר deployed אך לא נקרא; `soldiers.pdf_url`/`signings.pdf_url` כבר לא מתעדכנים.
+- **זיכוי מסגרת** — `UnitSignFormPage` (type=`return`) יורה PDF "זיכוי ציוד קשר — מסגרת" עם הפריטים שהוחזרו → `קשר/{מסגרת}/זיכויים/{שם מסגרת} {dd-mm-yyyy_HH-MM}.pdf` (שם קובץ מתוארך — אין חייל בודד; לא מוחלף).
+- כפתור "הצג PDF עדכני"/עמודת PDF הוסרו מ-`SoldiersPage` (מודאל) ומ-`SigningsPage` — ה-PDF של הקשר נשמר עכשיו ב-Drive, לא נצפה in-app (כמו נשק).
+
 **GAS web-app (proxy לDrive):**
 ```
 URL: משתנה בכל deploy חדש — נשמר ב-secret GAS_PDF_URL.

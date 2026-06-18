@@ -590,6 +590,7 @@ Lib: `lib/vehicles.ts` — `listVehicleTypes`, `createVehicleType`, `deleteVehic
 - אייקונים ב-`public/`: `pwa-192x192.png`, `pwa-512x512.png`, `maskable-512x512.png`, `apple-touch-icon.png` (נוצרו מ-`logo.png` עם `sips`).
 - meta tags ל-iOS/Android ב-`index.html`. כותרת הטאב: `CRM גדחה״ן`.
 - ניתן להתקנה מ"הוסף למסך הבית" בדפדפן.
+- **תקני שדות טפסים (אחידות מובייל, `index.css`):** `.input` הוא `text-base md:text-sm` — 16px במובייל **מונע זום אוטומטי של iOS** בפוקוס; viewport קיבל `maximum-scale=1.0`. `select.input` עם `appearance-none` + chevron מותאם משמאל (RTL); `input[type=date].input` עם `appearance-none` + יישור ערך לימין + `min-height`. כל ה-select/date באפליקציה משתמשים ב-`.input` ולכן אחידים.
 
 ---
 

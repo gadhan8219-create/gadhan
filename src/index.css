@@ -13,7 +13,23 @@
   .btn-secondary { @apply btn bg-slate-200 text-slate-900 hover:bg-slate-300; }
   .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
   .btn-ghost { @apply btn hover:bg-slate-100; }
-  .input { @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500; }
+  /* text-base (16px) on mobile prevents iOS Safari from auto-zooming on focus;
+     compact text-sm on md+ keeps desktop forms tight. */
+  .input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base md:text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500; }
+
+  /* Uniform native dropdowns across the app — custom chevron on the left (RTL). */
+  select.input {
+    @apply appearance-none bg-no-repeat pl-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-position: left 0.7rem center;
+    background-size: 1.1rem;
+  }
+
+  /* Uniform native date fields — match text inputs (iOS renders them oddly). */
+  input[type="date"].input { @apply appearance-none; min-height: 2.625rem; }
+  input[type="date"].input::-webkit-date-and-time-value { text-align: right; margin: 0; }
+  input[type="date"].input::-webkit-calendar-picker-indicator { margin-inline-start: 0; opacity: 0.5; }
+
   .label { @apply block text-sm font-medium text-slate-700 mb-1; }
   .card { @apply rounded-xl bg-white shadow-sm border border-slate-200 p-4 md:p-6; }
   .table-wrap { @apply -mx-4 md:mx-0 overflow-x-auto; }

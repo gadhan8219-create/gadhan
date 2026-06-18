@@ -31,7 +31,7 @@ export default function ManeuverEntriesPage() {
   const [unitId, setUnitId] = useState('');
   const [active, setActive] = useState<Mark | ''>('');           // type currently being assigned
   const [marks, setMarks] = useState<Record<string, Mark>>({});  // soldier_id → entry/exit
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [openTeams, setOpenTeams] = useState<Set<string>>(new Set()); // teams start collapsed
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +54,7 @@ export default function ManeuverEntriesPage() {
   // Soldiers + existing marks for tomorrow.
   useEffect(() => {
     if (!effectiveUnit) { setSoldiers([]); setMarks({}); return; }
-    setLoading(true); setSuccess(null);
+    setLoading(true); setSuccess(null); setOpenTeams(new Set());
     Promise.all([
       supabase.from('soldiers').select('*').eq('unit_id', effectiveUnit).order('full_name'),
       listEntries(effectiveUnit, date),
@@ -99,8 +99,8 @@ export default function ManeuverEntriesPage() {
     if (!active) return;
     setMarks((p) => { const n = { ...p }; for (const s of teamSoldiers) n[s.id] = active; return n; });
   }
-  function toggleCollapse(key: string) {
-    setCollapsed((p) => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  function toggleTeam(key: string) {
+    setOpenTeams((p) => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
   }
 
   async function submit() {
@@ -188,13 +188,13 @@ export default function ManeuverEntriesPage() {
           {/* Teams (collapsible) */}
           <div className="space-y-2">
             {groups.map((g) => {
-              const open = !collapsed.has(g.key);
+              const open = openTeams.has(g.key);
               const eC = g.soldiers.filter((s) => marks[s.id] === 'entry').length;
               const xC = g.soldiers.filter((s) => marks[s.id] === 'exit').length;
               return (
                 <div key={g.key} className="card p-0 overflow-hidden">
                   <div className="flex items-center justify-between gap-2 px-4 py-3">
-                    <button type="button" onClick={() => toggleCollapse(g.key)} className="flex items-center gap-2 font-semibold text-slate-700">
+                    <button type="button" onClick={() => toggleTeam(g.key)} className="flex items-center gap-2 font-semibold text-slate-700">
                       <span className="text-slate-400">{open ? '−' : '+'}</span>
                       {g.name}
                       <span className="text-xs text-slate-400 font-normal">({g.soldiers.length})</span>

@@ -31,6 +31,7 @@ export default function AttendanceReportPage() {
   const [values, setValues] = useState<Record<string, string>>({}); // soldier_id → status_id
   const [activeStatusId, setActiveStatusId] = useState(''); // status currently being assigned
   const [hasExisting, setHasExisting] = useState(false); // date already had a report
+  const [openTeams, setOpenTeams] = useState<Set<string>>(new Set()); // teams start collapsed
 
   const [newStatus, setNewStatus] = useState('');
   const [addingStatus, setAddingStatus] = useState(false);
@@ -62,6 +63,7 @@ export default function AttendanceReportPage() {
     if (!effectiveUnitId) { setSoldiers([]); setValues({}); return; }
     setLoading(true);
     setSuccess(null);
+    setOpenTeams(new Set());
     Promise.all([
       supabase.from('soldiers').select('*').eq('unit_id', effectiveUnitId).order('full_name'),
       getAttendanceForDate(date),
@@ -135,6 +137,10 @@ export default function AttendanceReportPage() {
       for (const s of soldiers) if (!next[s.id]) next[s.id] = activeStatusId;
       return next;
     });
+  }
+
+  function toggleTeam(name: string) {
+    setOpenTeams((p) => { const n = new Set(p); n.has(name) ? n.delete(name) : n.add(name); return n; });
   }
 
   // Assign the active status to an entire team (overwrites their current status).
@@ -325,12 +331,15 @@ export default function AttendanceReportPage() {
               <h3 className="font-bold text-slate-700 text-sm">② סמן את החיילים הרלוונטיים</h3>
               {groups.map((g) => {
                 const teamReported = g.soldiers.filter((s) => values[s.id]).length;
+                const open = openTeams.has(g.name);
                 return (
                 <div key={g.name} className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2 border-r-4 border-emerald-500 pr-2">
-                    <h4 className="font-bold text-slate-600 text-sm">
+                    <button type="button" onClick={() => toggleTeam(g.name)}
+                      className="flex items-center gap-2 font-bold text-slate-600 text-sm">
+                      <span className="text-slate-400">{open ? '−' : '+'}</span>
                       {g.name} <span className="text-slate-400 font-normal">({teamReported}/{g.soldiers.length})</span>
-                    </h4>
+                    </button>
                     {activeStatusId && (
                       <button type="button" onClick={() => applyToTeam(g.soldiers)}
                         className="text-xs text-emerald-600 hover:text-emerald-800 underline whitespace-nowrap">
@@ -338,6 +347,7 @@ export default function AttendanceReportPage() {
                       </button>
                     )}
                   </div>
+                  {open && (
                   <div className="divide-y divide-slate-100">
                     {g.soldiers.map((s) => {
                       const assigned = values[s.id];
@@ -359,6 +369,7 @@ export default function AttendanceReportPage() {
                       );
                     })}
                   </div>
+                  )}
                 </div>
                 );
               })}

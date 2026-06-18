@@ -109,24 +109,16 @@ export async function deleteRequirements(ids: string[]): Promise<void> {
 }
 
 // ── Entries / exits ───────────────────────────────────────────────────────────
-export async function addEntries(
-  unitId: string,
-  isEntry: boolean,
-  soldierIds: string[],
-  date: string,
-): Promise<void> {
-  if (soldierIds.length === 0) return;
-  const rows = soldierIds.map((soldier_id) => ({ unit_id: unitId, soldier_id, is_entry: isEntry, date }));
-  const { error } = await supabase.from('maneuver_entries').insert(rows);
-  if (error) throw error;
-}
+export interface EntryMark { soldier_id: string; is_entry: boolean }
 
-export async function listEntries(unitId: string): Promise<ManeuverEntry[]> {
-  const { data, error } = await supabase
+export async function listEntries(unitId: string, date?: string): Promise<ManeuverEntry[]> {
+  let q = supabase
     .from('maneuver_entries')
     .select('id, unit_id, soldier_id, is_entry, date, soldiers(full_name, personal_number)')
     .eq('unit_id', unitId)
     .order('created_at');
+  if (date) q = q.eq('date', date);
+  const { data, error } = await q;
   if (error) throw error;
   return ((data ?? []) as unknown as Array<{
     id: string; unit_id: string; soldier_id: string; is_entry: boolean; date: string;
@@ -142,13 +134,18 @@ export async function listEntries(unitId: string): Promise<ManeuverEntry[]> {
   }));
 }
 
-export async function deleteEntry(id: string): Promise<void> {
-  const { error } = await supabase.from('maneuver_entries').delete().eq('id', id);
+/** Replace a unit's entry/exit marks for a date — delete the day's rows, insert the new set. */
+export async function setEntriesForDate(unitId: string, date: string, marks: EntryMark[]): Promise<void> {
+  const { error: delErr } = await supabase.from('maneuver_entries').delete().eq('unit_id', unitId).eq('date', date);
+  if (delErr) throw delErr;
+  if (marks.length === 0) return;
+  const rows = marks.map((m) => ({ unit_id: unitId, soldier_id: m.soldier_id, is_entry: m.is_entry, date }));
+  const { error } = await supabase.from('maneuver_entries').insert(rows);
   if (error) throw error;
 }
 
-/** "בוצע" — clear all of a unit's entry/exit lists. */
-export async function deleteEntriesForUnit(unitId: string): Promise<void> {
-  const { error } = await supabase.from('maneuver_entries').delete().eq('unit_id', unitId);
+/** "בוצע" — clear a unit's entry/exit lists for a date. */
+export async function clearEntriesForDate(unitId: string, date: string): Promise<void> {
+  const { error } = await supabase.from('maneuver_entries').delete().eq('unit_id', unitId).eq('date', date);
   if (error) throw error;
 }

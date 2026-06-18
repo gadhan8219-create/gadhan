@@ -608,10 +608,10 @@ RLS פתוח (`using(true)`) + סקופ בצד הלקוח, כמו שאר המו�
 | דף | נתיב | תיאור |
 |----|------|--------|
 | ManeuverRequirementsPage | /maneuver/requirements | **דרישות תמרון**. למעלה — הוספת קטגוריה. טופס: מסגרת + צוות (לא חובה) + קטגוריה + textarea (דרישה לשורה/פסיק → `splitRequirements`). "הוספה" → שורה לכל דרישה ב-`maneuver_requirements`. |
-| ManeuverEntriesPage | /maneuver/entries | **כניסות/יציאות**. בחירת מסגרת. שתי תיבות chip עם autocomplete על חיילי המסגרת (שם+מ.א) — נכנסים/יוצאים. "הזן רשימה (למחר)" → `addEntries` עם `tomorrowISO()`. מתחת — הרשימות השמורות מה-DB, ניתנות לעריכה (הוספה/× מחיקה פר-שם). "בוצע" → `deleteEntriesForUnit`. |
-| ManeuverWorkPage | /maneuver/work | **משטח עבודה**. בחירת מסגרת → דרישות מקובצות לקטגוריות ב-collapse שפותח צ׳ק ליסט. סימון → "העתק לוואטסאפ" (`navigator.clipboard`, פורמט `*קטגוריה*` + `- דרישה`, רק המסומנות) / "סיום דרישות" → `deleteRequirements` של המסומנות בלבד. |
+| ManeuverEntriesPage | /maneuver/entries | **כניסות/יציאות** — מבנה כמו דוח 1 (2026-06-17): בחירת מסגרת → חיילים מקובצים לצוותים ב-**collapse**. בוחרים סוג פעיל (נכנסים/יוצאים) ומסמנים חייל או **צוות שלם** (כפתורי "נכנס"/"יוצא" פר-חייל + "סמן צוות כ…"). טוען את הסימונים הקיימים למחר. "הזן רשימה (למחר)" → `setEntriesForDate` (delete unit+date ואז insert). "בוצע (מחיקה)" → `clearEntriesForDate`. |
+| ManeuverWorkPage | /maneuver/work | **משטח עבודה**. בחירת מסגרת → דרישות מקובצות לקטגוריות ב-collapse שפותח צ׳ק ליסט. **"העתק לוואטסאפ" מעתיק את כל הדרישות תמיד** (פורמט `*קטגוריה*` + `- דרישה`). הצ׳קבוקסים משמשים רק ל-"סיום דרישות" → `deleteRequirements` של המסומנות בלבד. |
 
-Lib: `lib/maneuver.ts` — `listCategories`, `createCategory`, `addRequirements`, `splitRequirements`, `listRequirements`(join קטגוריה), `deleteRequirements`, `addEntries`, `listEntries`(join חייל), `deleteEntry`, `deleteEntriesForUnit`, `tomorrowISO`.
+Lib: `lib/maneuver.ts` — `listCategories`, `createCategory`, `addRequirements`, `splitRequirements`, `listRequirements`(join קטגוריה), `deleteRequirements`, `listEntries(unitId, date?)`(join חייל), `setEntriesForDate(unitId, date, marks)`, `clearEntriesForDate(unitId, date)`, `tomorrowISO`.
 
 ---
 

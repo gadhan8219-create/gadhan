@@ -68,16 +68,16 @@ export default function ManeuverWorkPage() {
   }
 
   function copyWhatsapp() {
+    // Copy ALL requirements (not only the checked ones), grouped by category.
     const lines: string[] = [];
     for (const g of groups) {
-      const picked = g.rows.filter((r) => checked.has(r.id));
-      if (picked.length === 0) continue;
+      if (g.rows.length === 0) continue;
       lines.push(`*${g.name}*`);
-      for (const r of picked) lines.push(`- ${r.requirement}`);
+      for (const r of g.rows) lines.push(`- ${r.requirement}`);
       lines.push('');
     }
     const text = lines.join('\n').trim();
-    if (!text) { setError('לא סומנו דרישות'); return; }
+    if (!text) { setError('אין דרישות להעתקה'); return; }
     navigator.clipboard.writeText(text)
       .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })
       .catch(() => setError('העתקה נכשלה'));

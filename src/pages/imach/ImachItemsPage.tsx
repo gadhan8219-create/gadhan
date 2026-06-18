@@ -32,6 +32,8 @@ export default function ImachItemsPage() {
   const [suUnit, setSuUnit] = useState('');
   const [form, setForm] = useState({ catId: '', name: '', uom: '', required: '', inSum: false });
   const [editing, setEditing] = useState<StorageItem | null>(null);
+  const [itemSearch, setItemSearch] = useState('');
+  const [itemCatFilter, setItemCatFilter] = useState('');
 
   const unitName = useMemo(() => {
     const m = new Map(units.map((u) => [u.id, u.name]));
@@ -71,6 +73,11 @@ export default function ImachItemsPage() {
 
   const imachUnits = new Set(storages.imach.map((s) => s.unit_id));
   const mehulaUnits = new Set(storages.mehula.map((s) => s.unit_id));
+
+  const q = itemSearch.trim();
+  const shownItems = items.filter((it) =>
+    (!itemCatFilter || it.storage_category_id === itemCatFilter) &&
+    (!q || it.name.includes(q) || it.categoryName.includes(q)));
 
   return (
     <div className="space-y-5">
@@ -175,7 +182,15 @@ export default function ImachItemsPage() {
       </div>
 
       {/* Items list */}
-      <div className="card p-0 overflow-x-auto">
+      <div className="card space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input className="input" value={itemSearch} onChange={(e) => setItemSearch(e.target.value)} placeholder="חיפוש פריט / קטגוריה…" />
+          <select className="input" value={itemCatFilter} onChange={(e) => setItemCatFilter(e.target.value)}>
+            <option value="">כל הקטגוריות</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="-mx-5 -mb-5 overflow-x-auto">
         <table className="table-base">
           <thead>
             <tr>
@@ -185,7 +200,7 @@ export default function ImachItemsPage() {
             </tr>
           </thead>
           <tbody>
-            {items.map((it) => (
+            {shownItems.map((it) => (
               <tr key={it.id} className={isAdmin ? 'cursor-pointer hover:bg-slate-50' : ''} onClick={() => isAdmin && setEditing(it)}>
                 <td className="font-medium">{it.name}</td>
                 <td className="text-sm text-slate-600">{it.categoryName}</td>
@@ -197,9 +212,10 @@ export default function ImachItemsPage() {
                 <td><button onClick={(e) => { e.stopPropagation(); run(() => deleteItem(it.id)); }} className="text-red-400 hover:text-red-600">מחק</button></td>
               </tr>
             ))}
-            {items.length === 0 && <tr><td colSpan={isAdmin ? 6 : 4} className="text-center text-slate-400 py-6 text-sm">אין פריטים</td></tr>}
+            {shownItems.length === 0 && <tr><td colSpan={isAdmin ? 6 : 4} className="text-center text-slate-400 py-6 text-sm">אין פריטים</td></tr>}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Edit modal (admin) */}

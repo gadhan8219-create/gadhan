@@ -31,6 +31,8 @@ export default function ImachBagsPage() {
   const [unitId, setUnitId] = useState('');
   const [openTeams, setOpenTeams] = useState<Set<string>>(new Set());
   const [stdQty, setStdQty] = useState<Record<string, string>>({});
+  const [addItemId, setAddItemId] = useState('');
+  const [addQty, setAddQty] = useState('');
   const [editing, setEditing] = useState<{ soldierId: string | null; label: string | null; title: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -99,6 +101,14 @@ export default function ImachBagsPage() {
   }, [soldierBags]);
 
   const bagCountFor = (soldierId: string) => soldierBags.filter((r) => r.soldier_id === soldierId).length;
+  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+
+  function addStandardItem() {
+    const n = Number(addQty);
+    if (!addItemId || !(n > 0)) return;
+    setStdQty((p) => ({ ...p, [addItemId]: String(n) }));
+    setAddItemId(''); setAddQty('');
+  }
 
   function initialFor(soldierId: string | null, label: string | null): Record<string, string> {
     const q: Record<string, string> = {};
@@ -159,23 +169,44 @@ export default function ImachBagsPage() {
       {isAdmin && (
         <div className="card space-y-3">
           <h3 className="font-semibold">תקן תיק לוחם (גדודי אחיד)</h3>
-          <div className="max-h-72 overflow-auto border border-slate-200 rounded-lg">
-            <table className="table-base">
-              <thead><tr><th>פריט</th><th>יח׳</th><th className="text-center w-28">כמות בתיק</th></tr></thead>
-              <tbody>
-                {items.map((it) => (
-                  <tr key={it.id}>
-                    <td>{it.name}</td>
-                    <td className="text-xs text-slate-400">{it.uom ?? '—'}</td>
-                    <td className="text-center">
-                      <input type="number" min="0" className="input !py-1 text-center w-20 mx-auto"
-                        value={stdQty[it.id] ?? ''} onChange={(e) => setStdQty((p) => ({ ...p, [it.id]: e.target.value }))} />
-                    </td>
-                  </tr>
+          {/* Add: pick an item, then its quantity */}
+          <div className="flex gap-2 items-end flex-wrap">
+            <div className="flex-1 min-w-[160px]">
+              <label className="label">פריט</label>
+              <select className="input" value={addItemId} onChange={(e) => setAddItemId(e.target.value)}>
+                <option value="">— בחר פריט —</option>
+                {items.filter((it) => stdQty[it.id] == null).map((it) => (
+                  <option key={it.id} value={it.id}>{it.name}{it.uom ? ` (${it.uom})` : ''}</option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+            </div>
+            <div className="w-28">
+              <label className="label">כמות תקן</label>
+              <input type="number" min="1" className="input" value={addQty} onChange={(e) => setAddQty(e.target.value)} />
+            </div>
+            <button type="button" onClick={addStandardItem} disabled={!addItemId || !(Number(addQty) > 0)}
+              className="btn-secondary disabled:opacity-40">+ הוסף</button>
           </div>
+
+          {/* Current standard */}
+          {Object.keys(stdQty).length === 0 ? (
+            <p className="text-sm text-slate-400">לא הוגדר תקן — הוסף פריטים</p>
+          ) : (
+            <ul className="divide-y divide-slate-100 border border-slate-200 rounded-lg">
+              {Object.keys(stdQty).map((id) => (
+                <li key={id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <span className="font-medium">{itemById.get(id)?.name ?? '—'}
+                    <span className="text-xs text-slate-400 mr-1">{itemById.get(id)?.uom ?? ''}</span></span>
+                  <span className="flex items-center gap-2">
+                    <input type="number" min="0" className="input !py-1 text-center w-20"
+                      value={stdQty[id]} onChange={(e) => setStdQty((p) => ({ ...p, [id]: e.target.value }))} />
+                    <button onClick={() => setStdQty((p) => { const n = { ...p }; delete n[id]; return n; })}
+                      className="text-red-400 hover:text-red-600">×</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
           <button type="button" onClick={saveStandard} disabled={busy} className="btn-primary">עדכן תקן</button>
         </div>
       )}

@@ -25,27 +25,38 @@ export interface DrivePdfArgs {
   filename: string;              // "<שם>.pdf"
 }
 
-/** Fire-and-forget — failures are reported by the backend (error email); never throws. */
-export function fireDrivePdf(args: DrivePdfArgs): void {
+const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-weapon-checkout-pdf`;
+
+function postFn(payload: unknown): void {
   supabase.auth.getSession().then(({ data: { session } }) => {
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-weapon-checkout-pdf`, {
+    fetch(FN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session?.access_token ?? ''}`,
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
       },
-      body: JSON.stringify({
-        title: args.title,
-        note: args.note,
-        soldier: args.entity,            // the edge function calls this field `soldier`
-        items: args.items,
-        performed_by: args.performed_by,
-        timestamp: new Date().toISOString(),
-        signature_png_b64: args.signature_png_b64,
-        drive_path: args.drive_path,
-        filename: args.filename,
-      }),
+      body: JSON.stringify(payload),
     }).catch(() => { /* backend sends an error email on failure */ });
   });
+}
+
+/** Fire-and-forget — failures are reported by the backend (error email); never throws. */
+export function fireDrivePdf(args: DrivePdfArgs): void {
+  postFn({
+    title: args.title,
+    note: args.note,
+    soldier: args.entity,            // the edge function calls this field `soldier`
+    items: args.items,
+    performed_by: args.performed_by,
+    timestamp: new Date().toISOString(),
+    signature_png_b64: args.signature_png_b64,
+    drive_path: args.drive_path,
+    filename: args.filename,
+  });
+}
+
+/** Fire-and-forget delete (trash) of a Drive PDF — used when an entity reaches 0 items. */
+export function fireDeleteDrivePdf(args: { drive_path: string[]; filename: string }): void {
+  postFn({ action: 'delete', drive_path: args.drive_path, filename: args.filename });
 }

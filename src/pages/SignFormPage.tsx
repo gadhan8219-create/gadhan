@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { logAudit } from '../lib/audit';
 import { loadSoldierHeldItems, type HeldItem } from '../lib/heldItems';
-import { fireDrivePdf } from '../lib/drivePdf';
+import { fireDrivePdf, fireDeleteDrivePdf } from '../lib/drivePdf';
 import { loadUnitAvailability, type UnitAvailability } from '../lib/unitStock';
 import type { Item, Soldier, Team, Unit } from '../lib/database.types';
 import SignaturePad, { type SignaturePadHandle } from '../components/SignaturePad';
@@ -167,6 +167,11 @@ export default function SignFormPage() {
     signaturePng: string,
   ) {
     const held = await loadSoldierHeldItems(soldierId); // radio items only (no PN)
+    // No items left → delete the sheet rather than store an empty one.
+    if (held.length === 0) {
+      fireDeleteDrivePdf({ drive_path: ['קשר', soldier.unitName, 'החתמות'], filename: `${soldier.full_name}.pdf` });
+      return;
+    }
     fireDrivePdf({
       title: 'החתמת ציוד קשר',
       note: 'סיכום נוכחי',

@@ -210,15 +210,17 @@ export default function UnitSignFormPage() {
 
       setFeedback({ type: 'success', msg: `נשמר בהצלחה (${inserts.length} פריטים)` });
 
-      // Framework return → fire a זיכויי מסגרת PDF to Drive at קשר/<מסגרת>/זיכויים.
-      // Dated filename so each return is preserved (no single soldier to key on).
-      if (isReturn) {
+      // Fire a framework PDF to Drive — both for signing and for return.
+      //   החתמת מסגרת → קשר/<מסגרת>/החתמת מסגרת/
+      //   זיכוי מסגרת  → קשר/<מסגרת>/זיכויים/
+      // Dated filename so every framework event is preserved (no single soldier).
+      {
         const uName = units.find((u) => u.id === unitId)?.name ?? '—';
         const now = new Date();
         const p2 = (n: number) => String(n).padStart(2, '0');
         const stamp = `${p2(now.getDate())}-${p2(now.getMonth() + 1)}-${now.getFullYear()}_${p2(now.getHours())}-${p2(now.getMinutes())}`;
         fireDrivePdf({
-          title: 'זיכוי ציוד קשר — מסגרת',
+          title: isReturn ? 'זיכוי ציוד קשר — מסגרת' : 'החתמת ציוד קשר — מסגרת',
           note: uName,
           entity: { full_name: uName, personal_number: '—', unit_name: uName },
           items: inserts.map((i) => ({
@@ -227,7 +229,7 @@ export default function UnitSignFormPage() {
             serial: i.serial_number,
           })),
           performed_by: profile.full_name,
-          drive_path: ['קשר', uName, 'זיכויים'],
+          drive_path: ['קשר', uName, isReturn ? 'זיכויים' : 'החתמת מסגרת'],
           filename: `${uName} ${stamp}.pdf`,
         });
       }

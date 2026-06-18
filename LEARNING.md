@@ -166,7 +166,7 @@ WEAPONS_CHECKOUT_DRIVE_FOLDER_ID — Root folder ID ב-Drive
 
 **קשר עבר ל-Drive (2026-06-17)** — אותו edge function `generate-weapon-checkout-pdf` (גנרי) משמש גם את הקשר; אין redeploy. `src/lib/drivePdf.ts` (`fireDrivePdf`) הוא העטיפה המשותפת (ממפה `entity`→`soldier`). מבנה: `ROOT/קשר/{unit_name}/החתמות|זיכויים/...`.
 - **החתמה (חייל)** — `SignFormPage` יורה PDF "החתמת ציוד קשר" עם **המצאי הנוכחי** של החייל (`loadSoldierHeldItems`) + חתימה → `קשר/{מסגרת}/החתמות/{שם החייל}.pdf` (מוחלף בכל החתמה). **הוסר** השימוש ב-`generate-signing-pdf` (Supabase bucket `signing-pdfs`) — ה-edge function נשאר deployed אך לא נקרא; `soldiers.pdf_url`/`signings.pdf_url` כבר לא מתעדכנים.
-- **זיכוי מסגרת** — `UnitSignFormPage` (type=`return`) יורה PDF "זיכוי ציוד קשר — מסגרת" עם הפריטים שהוחזרו → `קשר/{מסגרת}/זיכויים/{שם מסגרת} {dd-mm-yyyy_HH-MM}.pdf` (שם קובץ מתוארך — אין חייל בודד; לא מוחלף).
+- **מסגרת — החתמה + זיכוי** — `UnitSignFormPage` יורה PDF לשני הסוגים (לא רק זיכוי): **החתמה** (type=`signing`) → `קשר/{מסגרת}/החתמת מסגרת/{מסגרת} {dd-mm-yyyy_HH-MM}.pdf`; **זיכוי** (type=`return`) → `קשר/{מסגרת}/זיכויים/{מסגרת} {dd-mm-yyyy_HH-MM}.pdf`. שם קובץ מתוארך — אין חייל בודד; כל אירוע נשמר (לא מוחלף). הפריטים = ה-`inserts` של אותה פעולה.
 - כפתור "הצג PDF עדכני"/עמודת PDF הוסרו מ-`SoldiersPage` (מודאל) ומ-`SigningsPage` — ה-PDF של הקשר נשמר עכשיו ב-Drive, לא נצפה in-app (כמו נשק).
 
 **GAS web-app (proxy לDrive):**
@@ -229,9 +229,11 @@ setSuccess(true); // המשתמש מחכה לDrive
 |-----|-------|-----|
 | זיכוי חייל | בחר פריטים → זכה | clear assigned_to_pn + PDF אסינכרוני |
 | זיכוי פריט | בחר צ׳ ספציפי | clear assigned_to_pn + PDF אסינכרוני |
-| העברה | src → dst (אותה מסגרת) | update assigned_to_pn |
-| ראש בראש | החלפת פריטים בין 2 חיילים | 2× update |
-| איפסון | סמן is_zeroed=true | update is_zeroed + zeroed_at |
+| העברה | src → dst (אותה מסגרת) | update assigned_to_pn + **רענון טופס החתמות לשני החיילים** |
+| ראש בראש | החלפת פריטים בין 2 חיילים | 2× update + **רענון טופס החתמות לשני החיילים** |
+| איפסון | סמן is_zeroed=true | update is_zeroed + zeroed_at (ללא טופס) |
+
+**רענון טופס החתמות (2026-06-17):** helper `fireHoldingsPdf(soldier)` ב-`WeaponsTransferPage` — שולף את ההחזקות הנוכחיות של חייל ומחדש את `נשקיה/{מסגרת}/החתמות/{שם}.pdf` (או **מוחק** אם 0 פריטים; פריטי כמות מקובצים לספירה). נקרא אחרי כל פעולה ששינתה החזקות — `doZikhui` (4b, החליף את הקוד המוטבע), `doTransfer` (src+dst), `doRosh` (src+dst). חיוני: נקרא **אחרי** ה-DB write כדי שהשאילתה תשקף מצב חדש.
 
 **זיכוי + PDF אסינכרוני:**
 ```typescript

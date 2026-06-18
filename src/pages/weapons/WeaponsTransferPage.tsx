@@ -247,6 +247,52 @@ export default function WeaponsTransferPage() {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
+  /**
+   * Regenerate (or delete) a soldier's החתמות sheet to match their CURRENT
+   * holdings. Fire-and-forget. Used after any action that changes what a soldier
+   * holds — זיכוי, העברה and ראש בראש — so the Drive form always matches reality.
+   * Must be called AFTER the DB write so the query reflects the new state.
+   */
+  function fireHoldingsPdf(soldier: { full_name: string; personal_number: string; unit_name: string }) {
+    (async () => {
+      const { data: remaining } = await supabase
+        .from('weapons_item_serials')
+        .select('serial_number, weapons_items(name)')
+        .eq('assigned_to_pn', soldier.personal_number)
+        .not('assigned_to_pn', 'is', null);
+      const filename = `${soldier.full_name}.pdf`;
+      const drive_path = ['נשקיה', soldier.unit_name, 'החתמות'];
+      const rows = (remaining ?? []) as any[];
+      if (rows.length === 0) {
+        // No items left → remove the stale sheet.
+        await callDeletePdfFn({ drive_path, filename });
+        return;
+      }
+      // Real serials listed individually; qty items collapsed into a count.
+      const qtyMap = new Map<string, { name: string; quantity: number }>();
+      const items: Array<{ name: string; serial: string | null; quantity: number }> = [];
+      for (const r of rows) {
+        const name = r.weapons_items?.name ?? '—';
+        if (isQtySerial(r.serial_number)) {
+          const cur = qtyMap.get(name);
+          if (cur) cur.quantity += 1; else qtyMap.set(name, { name, quantity: 1 });
+        } else {
+          items.push({ name, serial: r.serial_number, quantity: 1 });
+        }
+      }
+      for (const v of qtyMap.values()) items.push({ name: v.name, serial: null, quantity: v.quantity });
+      await callPdfFn({
+        title:      'סיכום נשק בהחזקה',
+        note:       `עודכן · ${new Date().toLocaleDateString('he-IL')}`,
+        soldier,
+        items,
+        performed_by: profile?.full_name ?? '',
+        drive_path,
+        filename,
+      });
+    })().catch(() => { /* error email sent by backend */ });
+  }
+
   async function doZikhui(ids: string[], pdfCtx?: ZikhuiPdfCtx) {
     if (!ids.length) { setError('לא נבחרו פריטים'); return; }
     setLoading(true); setError(null);
@@ -310,32 +356,7 @@ export default function WeaponsTransferPage() {
         })().catch(() => { /* error email sent by backend */ });
 
         // 4b. החתמות PDF — remaining holdings, or DELETE the file on full return.
-        (async () => {
-          const { data: remaining } = await supabase
-            .from('weapons_item_serials')
-            .select('serial_number, weapons_items(name)')
-            .eq('assigned_to_pn', soldier.personal_number)
-            .not('assigned_to_pn', 'is', null);
-
-          if (remaining && remaining.length > 0) {
-            await callPdfFn({
-              title:      'סיכום נשק בהחזקה',
-              note:       `עודכן לאחר זיכוי חלקי · ${dateStr}`,
-              soldier,
-              items:      (remaining as any[]).map((r) => ({
-                            name:     r.weapons_items?.name ?? '—',
-                            serial:   isQtySerial(r.serial_number) ? null : r.serial_number,
-                            quantity: 1,
-                          })),
-              performed_by,
-              drive_path: ['נשקיה', soldier.unit_name, 'החתמות'],
-              filename,
-            });
-          } else {
-            // Full return → no items left, remove the stale החתמות PDF.
-            await callDeletePdfFn({ drive_path: ['נשקיה', soldier.unit_name, 'החתמות'], filename });
-          }
-        })().catch(() => { /* error email sent by backend */ });
+        fireHoldingsPdf(soldier);
       }
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
@@ -362,6 +383,9 @@ export default function WeaponsTransferPage() {
         throw new Error('לא ניתן להעביר חלק מהפריטים — ייתכן שאין הרשאה למסגרת זו');
       }
       setSuccess(`${rows.length} פריטים הועברו ל-${dstSoldier.full_name}`);
+      // Both soldiers' holdings changed → refresh their החתמות sheets.
+      fireHoldingsPdf({ full_name: srcSoldier.full_name, personal_number: srcSoldier.personal_number, unit_name: srcSoldier.unit_name });
+      fireHoldingsPdf({ full_name: dstSoldier.full_name, personal_number: dstSoldier.personal_number, unit_name: dstSoldier.unit_name });
       await loadAll(); resetForms();
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
@@ -403,6 +427,9 @@ export default function WeaponsTransferPage() {
         if (!b || b.length === 0) throw new Error(`לא ניתן לבצע ראש בראש על ${p.itemName} — ייתכן שאין הרשאה למסגרת זו`);
       }
       setSuccess(`ראש בראש בוצע ל-${toSwap.length} פריטים`);
+      // Both soldiers swapped items → refresh both החתמות sheets.
+      fireHoldingsPdf({ full_name: srcSoldier.full_name, personal_number: srcSoldier.personal_number, unit_name: srcSoldier.unit_name });
+      fireHoldingsPdf({ full_name: dstSoldier.full_name, personal_number: dstSoldier.personal_number, unit_name: dstSoldier.unit_name });
       await loadAll(); resetForms();
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }

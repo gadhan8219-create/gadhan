@@ -1,11 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './auth';
+import { IDLE_MS, STORAGE_KEY } from './idle';
 
-/** Sign the user out after this much inactivity. */
-const IDLE_MS = 30 * 60 * 1000; // 30 minutes
-/** Shared across tabs so a backgrounded tab can detect it slept past the limit. */
-const STORAGE_KEY = 'gadhan-last-activity';
 /** Don't reset the timer more than once per second on a flood of events. */
 const RESET_THROTTLE_MS = 1000;
 

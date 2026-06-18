@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { STORAGE_KEY, touchIdleActivity } from './idle';
 import type { Profile } from './database.types';
 
 interface AuthContextValue {
@@ -103,10 +104,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profileError,
     signIn: async (email, password) => {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
+      // Start a fresh idle window on a successful login so the idle-logout mount
+      // check doesn't read a stale timestamp from a prior session and bounce us.
+      if (!error) touchIdleActivity();
       return { error: error?.message ?? null };
     },
     signOut: async () => {
       await supabase.auth.signOut();
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* storage unavailable */ }
     },
     refreshProfile: async () => {
       if (session?.user.id) await loadProfile(session.user.id);

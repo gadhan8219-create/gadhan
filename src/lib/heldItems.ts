@@ -6,7 +6,8 @@ export interface HeldItem {
   serialNumber: string | null;
   quantity: number;
   source: 'radio' | 'weapons';
-  zeroed?: boolean; // weapons only — item is marked מאופסן (still signed)
+  zeroed?: boolean;       // weapons only — item is marked מאופסן (still signed)
+  zeroedNote?: string;    // the איפסון note(s), shown wherever מאופסן appears
 }
 
 /** Synthetic serial used for non-serial (quantity-tracked) weapons items. */
@@ -64,18 +65,28 @@ export async function loadSoldierHeldItems(soldierId: string, personalNumber?: s
   if (personalNumber) {
     const { data: wdata, error: werr } = await supabase
       .from('weapons_item_serials')
-      .select('serial_number, is_zeroed, weapons_items(name)')
+      .select('serial_number, is_zeroed, zeroed_note, weapons_items(name)')
       .eq('assigned_to_pn', personalNumber);
     if (werr) throw werr;
 
+    // Quantity items collapse into a count — but split by zeroed state so a
+    // מאופסן quantity item is shown separately (with its note), not hidden.
     const qtyMap = new Map<string, HeldItem>();
-    const wrows = (wdata ?? []) as unknown as Array<{ serial_number: string; is_zeroed: boolean | null; weapons_items: { name: string } | null }>;
+    const addNote = (h: HeldItem, note: string | null) => {
+      if (!note) return;
+      h.zeroedNote = h.zeroedNote
+        ? (h.zeroedNote.split(', ').includes(note) ? h.zeroedNote : `${h.zeroedNote}, ${note}`)
+        : note;
+    };
+    const wrows = (wdata ?? []) as unknown as Array<{ serial_number: string; is_zeroed: boolean | null; zeroed_note: string | null; weapons_items: { name: string } | null }>;
     for (const r of wrows) {
       const name = r.weapons_items?.name ?? '?';
+      const zeroed = r.is_zeroed ?? false;
       if (isQtySerial(r.serial_number)) {
-        const key = `w::${name}`;
-        const ex = qtyMap.get(key) ?? { itemId: key, itemName: name, serialNumber: null, quantity: 0, source: 'weapons' as const };
+        const key = `w::${name}::${zeroed}`;
+        const ex = qtyMap.get(key) ?? { itemId: key, itemName: name, serialNumber: null, quantity: 0, source: 'weapons' as const, zeroed };
         ex.quantity += 1;
+        if (zeroed) addNote(ex, r.zeroed_note);
         qtyMap.set(key, ex);
       } else {
         result.push({
@@ -84,7 +95,8 @@ export async function loadSoldierHeldItems(soldierId: string, personalNumber?: s
           serialNumber: r.serial_number,
           quantity: 1,
           source: 'weapons',
-          zeroed: r.is_zeroed ?? false,
+          zeroed,
+          zeroedNote: zeroed ? (r.zeroed_note ?? undefined) : undefined,
         });
       }
     }

@@ -258,7 +258,9 @@ export default function SoldiersPage() {
                                 <span className="text-slate-500 text-xs"> [צ' {h.serialNumber}]</span>
                               )}
                               {h.zeroed && (
-                                <span className="badge bg-orange-100 text-orange-700 text-xs mr-1">מאופסן</span>
+                                <span className="badge bg-orange-100 text-orange-700 text-xs mr-1">
+                                  מאופסן{h.zeroedNote ? `: ${h.zeroedNote}` : ''}
+                                </span>
                               )}
                             </span>
                             <span className="text-slate-600">x{h.quantity}</span>

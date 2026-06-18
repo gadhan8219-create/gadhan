@@ -67,8 +67,8 @@ export default function WeaponsInventoryPage() {
 
   // Detail modal
   const [detail, setDetail] = useState<DetailModal | null>(null);
-  // Zeroed (מאופסן) list modal, per item — sorted by soldier with the note.
-  const [zeroedModal, setZeroedModal] = useState<{ itemName: string; rows: SerialRow[] } | null>(null);
+  // Detail modal: toggle to show only the מאופסן rows (with their notes).
+  const [detailZeroedOnly, setDetailZeroedOnly] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -139,12 +139,6 @@ export default function WeaponsInventoryPage() {
     if (!item.has_serials) return (item.quantity ?? 0) - totalIssued(item.id);
     return (totalCounts[item.id] ?? 0) - totalIssued(item.id);
   }
-  // Zeroed (מאופסן) serials for an item, sorted by holder name.
-  function zeroedFor(itemId: string) {
-    return serials
-      .filter((r) => r.item_id === itemId && r.is_zeroed)
-      .sort((a, b) => (a.assigned_to_name ?? a.assigned_to_pn).localeCompare(b.assigned_to_name ?? b.assigned_to_pn, 'he'));
-  }
 
   // Can the current user mark checks on a serial sitting at the given unit?
   function canMark(unitId: string | null) {
@@ -198,6 +192,7 @@ export default function WeaponsInventoryPage() {
   function openDetail(item: WeaponsItem, unit: UnitRow) {
     const rows = serials.filter((r) => r.item_id === item.id && r.unit_id === unit.id);
     if (rows.length === 0) return;
+    setDetailZeroedOnly(false);
     setDetail({ itemId: item.id, itemName: item.name, unitId: unit.id, unitName: unit.name, rows });
   }
 
@@ -244,10 +239,13 @@ export default function WeaponsInventoryPage() {
   // `ids` keeps every underlying serial id so a check marks the whole group, and
   // the aggregate check date is null (= due) if ANY item in the group is missing
   // it, otherwise the oldest date in the group.
-  interface DisplayRow extends SerialView { quantity: number; isQty: boolean; ids: string[]; }
+  interface DisplayRow extends SerialView { quantity: number; isQty: boolean; ids: string[]; zeroedCount: number; zeroedNotes: string[]; }
   // null wins (a missing check means the group is due); otherwise keep the oldest.
   const oldestOrNull = (a: string | null, b: string | null): string | null =>
     a === null || b === null ? null : (a < b ? a : b);
+  const pushNote = (notes: string[], note: string | null) => {
+    if (note && !notes.includes(note)) notes.push(note);
+  };
   const displayRows: DisplayRow[] = [];
   const qtyIndex = new Map<string, DisplayRow>();
   for (const r of serialRows) {
@@ -259,13 +257,22 @@ export default function WeaponsInventoryPage() {
         ex.ids.push(r.id);
         ex.weapon_check_at = oldestOrNull(ex.weapon_check_at, r.weapon_check_at);
         ex.green_check_at = oldestOrNull(ex.green_check_at, r.green_check_at);
+        if (r.is_zeroed) { ex.zeroedCount += 1; pushNote(ex.zeroedNotes, r.zeroed_note); }
         continue;
       }
-      const dr: DisplayRow = { ...r, quantity: 1, isQty: true, ids: [r.id] };
+      const dr: DisplayRow = {
+        ...r, quantity: 1, isQty: true, ids: [r.id],
+        zeroedCount: r.is_zeroed ? 1 : 0,
+        zeroedNotes: r.is_zeroed && r.zeroed_note ? [r.zeroed_note] : [],
+      };
       qtyIndex.set(key, dr);
       displayRows.push(dr);
     } else {
-      displayRows.push({ ...r, quantity: 1, isQty: false, ids: [r.id] });
+      displayRows.push({
+        ...r, quantity: 1, isQty: false, ids: [r.id],
+        zeroedCount: r.is_zeroed ? 1 : 0,
+        zeroedNotes: r.is_zeroed && r.zeroed_note ? [r.zeroed_note] : [],
+      });
     }
   }
 
@@ -400,7 +407,6 @@ export default function WeaponsInventoryPage() {
                     <th>פריט</th>
                     {units.map((u) => <th key={u.id} className="text-center">{u.name}</th>)}
                     <th className="text-center">סה"כ חתום</th>
-                    <th className="text-center">סה״כ מאופסן</th>
                     <th className="text-center">מלאי נשקייה</th>
                   </tr>
                 </thead>
@@ -408,7 +414,6 @@ export default function WeaponsInventoryPage() {
                   {visibleItems.map((item) => {
                     const issued = totalIssued(item.id);
                     const stock  = stockFor(item);
-                    const zeroed = zeroedFor(item.id);
                     return (
                       <tr key={item.id}>
                         <td>
@@ -439,17 +444,6 @@ export default function WeaponsInventoryPage() {
                           {issued > 0 ? issued : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="text-center">
-                          {zeroed.length > 0 ? (
-                            <button type="button"
-                              onClick={() => setZeroedModal({ itemName: item.name, rows: zeroed })}
-                              className="badge bg-orange-100 text-orange-700 font-semibold hover:bg-orange-200 transition cursor-pointer">
-                              {zeroed.length}
-                            </button>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </td>
-                        <td className="text-center">
                           <span className={stock > 0 ? 'font-semibold text-emerald-700' : 'text-slate-400'}>
                             {stock}
                           </span>
@@ -459,7 +453,7 @@ export default function WeaponsInventoryPage() {
                   })}
                   {visibleItems.length === 0 && (
                     <tr>
-                      <td colSpan={units.length + 4} className="text-center text-slate-400 py-8 text-sm">
+                      <td colSpan={units.length + 3} className="text-center text-slate-400 py-8 text-sm">
                         לא נמצאו פריטים
                       </td>
                     </tr>
@@ -508,7 +502,19 @@ export default function WeaponsInventoryPage() {
                   {displayRows.map((r) => (
                     <tr key={r.id}>
                       <td className="text-sm text-slate-600">{r.unitName}</td>
-                      <td className="font-medium">{r.itemName}</td>
+                      <td className="font-medium">
+                        {r.itemName}
+                        {r.zeroedCount > 0 && (
+                          <div className="mt-0.5">
+                            <span className="badge bg-orange-100 text-orange-700 text-xs">
+                              מאופסן{r.isQty && r.zeroedCount > 1 ? ` ×${r.zeroedCount}` : ''}
+                            </span>
+                            {r.zeroedNotes.length > 0 && (
+                              <span className="text-xs text-slate-500 mr-1">{r.zeroedNotes.join(', ')}</span>
+                            )}
+                          </div>
+                        )}
+                      </td>
                       <td className={r.isQty ? '' : 'font-mono'} dir={r.isQty ? undefined : 'ltr'}>
                         {r.isQty ? r.quantity : r.serial_number}
                       </td>
@@ -552,14 +558,26 @@ export default function WeaponsInventoryPage() {
           onClick={() => setDetail(null)}>
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6"
             onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="text-lg font-bold">{detail.itemName}</h3>
-                <p className="text-sm text-slate-500">{detail.unitName} · {detail.rows.length} חתומים</p>
+                <p className="text-sm text-slate-500">
+                  {detail.unitName} · {detail.rows.length} חתומים
+                  {(() => { const z = detail.rows.filter((r) => r.is_zeroed).length; return z > 0 ? ` · ${z} מאופסן` : ''; })()}
+                </p>
               </div>
               <button onClick={() => setDetail(null)}
                 className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
             </div>
+
+            {detail.rows.some((r) => r.is_zeroed) && (
+              <label className="flex items-center gap-2 cursor-pointer select-none w-fit mb-3 text-sm text-slate-600">
+                <input type="checkbox" className="w-4 h-4 accent-orange-500"
+                  checked={detailZeroedOnly} onChange={(e) => setDetailZeroedOnly(e.target.checked)} />
+                מאופסן בלבד
+              </label>
+            )}
+
             <div className="border border-slate-200 rounded-lg overflow-auto max-h-80">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
@@ -567,25 +585,48 @@ export default function WeaponsInventoryPage() {
                     <th className="text-right p-2 font-medium">שם</th>
                     <th className="text-right p-2 font-medium">מ.א</th>
                     <th className="text-right p-2 font-medium">צ׳</th>
+                    {detailZeroedOnly && <th className="text-right p-2 font-medium">הערה</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {(() => {
                     const item = itemById.get(detail.itemId);
                     const isQtyItem = item ? !item.has_serials : detail.rows.some((r) => isQtySerial(r.serial_number));
+
+                    // מאופסן-only view: a flat list per serial, sorted by soldier, with the note.
+                    if (detailZeroedOnly) {
+                      const zr = detail.rows
+                        .filter((r) => r.is_zeroed)
+                        .sort((a, b) => (a.assigned_to_name ?? a.assigned_to_pn).localeCompare(b.assigned_to_name ?? b.assigned_to_pn, 'he'));
+                      if (zr.length === 0) {
+                        return <tr><td colSpan={4} className="p-3 text-center text-slate-400">אין פריטים באיפסון</td></tr>;
+                      }
+                      return zr.map((r) => (
+                        <tr key={r.id} className="border-b border-slate-100 last:border-0">
+                          <td className="p-2">{r.assigned_to_name ?? '—'}</td>
+                          <td className="p-2 text-slate-500">{r.assigned_to_pn}</td>
+                          <td className="p-2 font-mono" dir="ltr">{isQtySerial(r.serial_number) ? '—' : r.serial_number}</td>
+                          <td className="p-2 text-slate-600">{r.zeroed_note || '—'}</td>
+                        </tr>
+                      ));
+                    }
+
                     if (isQtyItem) {
                       // Quantity-tracked item → one row per soldier with a count (not a צ׳).
-                      const byPn = new Map<string, { name: string | null; pn: string; qty: number }>();
+                      const byPn = new Map<string, { name: string | null; pn: string; qty: number; zeroed: number }>();
                       for (const r of detail.rows) {
                         const ex = byPn.get(r.assigned_to_pn);
-                        if (ex) ex.qty += 1;
-                        else byPn.set(r.assigned_to_pn, { name: r.assigned_to_name, pn: r.assigned_to_pn, qty: 1 });
+                        if (ex) { ex.qty += 1; if (r.is_zeroed) ex.zeroed += 1; }
+                        else byPn.set(r.assigned_to_pn, { name: r.assigned_to_name, pn: r.assigned_to_pn, qty: 1, zeroed: r.is_zeroed ? 1 : 0 });
                       }
                       return [...byPn.values()].map((v) => (
                         <tr key={v.pn} className="border-b border-slate-100 last:border-0">
                           <td className="p-2">{v.name ?? '—'}</td>
                           <td className="p-2 text-slate-500">{v.pn}</td>
-                          <td className="p-2">{v.qty}</td>
+                          <td className="p-2">
+                            {v.qty}
+                            {v.zeroed > 0 && <span className="badge bg-orange-100 text-orange-700 text-xs mr-1">{v.zeroed} מאופסן</span>}
+                          </td>
                         </tr>
                       ));
                     }
@@ -593,7 +634,14 @@ export default function WeaponsInventoryPage() {
                       <tr key={r.serial_number} className="border-b border-slate-100 last:border-0">
                         <td className="p-2">{r.assigned_to_name ?? '—'}</td>
                         <td className="p-2 text-slate-500">{r.assigned_to_pn}</td>
-                        <td className="p-2 font-mono" dir="ltr">{r.serial_number}</td>
+                        <td className="p-2 font-mono" dir="ltr">
+                          {r.serial_number}
+                          {r.is_zeroed && (
+                            <span className="badge bg-orange-100 text-orange-700 text-xs mr-1">
+                              מאופסן{r.zeroed_note ? `: ${r.zeroed_note}` : ''}
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ));
                   })()}
@@ -602,47 +650,6 @@ export default function WeaponsInventoryPage() {
             </div>
             <div className="flex justify-end mt-4">
               <button onClick={() => setDetail(null)} className="btn-secondary">סגור</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Zeroed (מאופסן) list modal — sorted by soldier, with the זיכוי note */}
-      {zeroedModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-          onClick={() => setZeroedModal(null)}>
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6"
-            onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold">{zeroedModal.itemName}</h3>
-                <p className="text-sm text-slate-500">מאופסן · {zeroedModal.rows.length} פריטים</p>
-              </div>
-              <button onClick={() => setZeroedModal(null)}
-                className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
-            </div>
-            <div className="border border-slate-200 rounded-lg overflow-auto max-h-80">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="text-right p-2 font-medium">חייל</th>
-                    <th className="text-right p-2 font-medium">צ׳</th>
-                    <th className="text-right p-2 font-medium">הערה</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {zeroedModal.rows.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-100 last:border-0">
-                      <td className="p-2">{r.assigned_to_name ?? r.assigned_to_pn}</td>
-                      <td className="p-2 font-mono" dir="ltr">{isQtySerial(r.serial_number) ? '—' : r.serial_number}</td>
-                      <td className="p-2 text-slate-600">{r.zeroed_note || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex justify-end mt-4">
-              <button onClick={() => setZeroedModal(null)} className="btn-secondary">סגור</button>
             </div>
           </div>
         </div>

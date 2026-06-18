@@ -14,6 +14,8 @@ interface SerialRow {
   assigned_to_name: string | null;
   weapon_check_at:  string | null;
   green_check_at:   string | null;
+  is_zeroed:        boolean;
+  zeroed_note:      string | null;
   unit_id: string | null; // resolved from soldiers
 }
 
@@ -65,6 +67,8 @@ export default function WeaponsInventoryPage() {
 
   // Detail modal
   const [detail, setDetail] = useState<DetailModal | null>(null);
+  // Zeroed (מאופסן) list modal, per item — sorted by soldier with the note.
+  const [zeroedModal, setZeroedModal] = useState<{ itemName: string; rows: SerialRow[] } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -76,7 +80,7 @@ export default function WeaponsInventoryPage() {
       // assigned serials with details
       supabase
         .from('weapons_item_serials')
-        .select('id, item_id, serial_number, assigned_to_pn, assigned_to_name, weapon_check_at, green_check_at')
+        .select('id, item_id, serial_number, assigned_to_pn, assigned_to_name, weapon_check_at, green_check_at, is_zeroed, zeroed_note')
         .not('assigned_to_pn', 'is', null),
       supabase.from('soldiers').select('personal_number, unit_id'),
     ]);
@@ -102,8 +106,10 @@ export default function WeaponsInventoryPage() {
       id: string; item_id: string; serial_number: string;
       assigned_to_pn: string; assigned_to_name: string | null;
       weapon_check_at: string | null; green_check_at: string | null;
+      is_zeroed: boolean | null; zeroed_note: string | null;
     }>).map((r) => ({
       ...r,
+      is_zeroed: r.is_zeroed ?? false,
       unit_id: pnToUnit[r.assigned_to_pn] ?? null,
     }));
     setSerials(enriched);
@@ -132,6 +138,12 @@ export default function WeaponsInventoryPage() {
     // For non-serial items, quantity = total stock; subtract rows assigned in weapons_item_serials
     if (!item.has_serials) return (item.quantity ?? 0) - totalIssued(item.id);
     return (totalCounts[item.id] ?? 0) - totalIssued(item.id);
+  }
+  // Zeroed (מאופסן) serials for an item, sorted by holder name.
+  function zeroedFor(itemId: string) {
+    return serials
+      .filter((r) => r.item_id === itemId && r.is_zeroed)
+      .sort((a, b) => (a.assigned_to_name ?? a.assigned_to_pn).localeCompare(b.assigned_to_name ?? b.assigned_to_pn, 'he'));
   }
 
   // Can the current user mark checks on a serial sitting at the given unit?
@@ -388,6 +400,7 @@ export default function WeaponsInventoryPage() {
                     <th>פריט</th>
                     {units.map((u) => <th key={u.id} className="text-center">{u.name}</th>)}
                     <th className="text-center">סה"כ חתום</th>
+                    <th className="text-center">סה״כ מאופסן</th>
                     <th className="text-center">מלאי נשקייה</th>
                   </tr>
                 </thead>
@@ -395,6 +408,7 @@ export default function WeaponsInventoryPage() {
                   {visibleItems.map((item) => {
                     const issued = totalIssued(item.id);
                     const stock  = stockFor(item);
+                    const zeroed = zeroedFor(item.id);
                     return (
                       <tr key={item.id}>
                         <td>
@@ -425,6 +439,17 @@ export default function WeaponsInventoryPage() {
                           {issued > 0 ? issued : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="text-center">
+                          {zeroed.length > 0 ? (
+                            <button type="button"
+                              onClick={() => setZeroedModal({ itemName: item.name, rows: zeroed })}
+                              className="badge bg-orange-100 text-orange-700 font-semibold hover:bg-orange-200 transition cursor-pointer">
+                              {zeroed.length}
+                            </button>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="text-center">
                           <span className={stock > 0 ? 'font-semibold text-emerald-700' : 'text-slate-400'}>
                             {stock}
                           </span>
@@ -434,7 +459,7 @@ export default function WeaponsInventoryPage() {
                   })}
                   {visibleItems.length === 0 && (
                     <tr>
-                      <td colSpan={units.length + 3} className="text-center text-slate-400 py-8 text-sm">
+                      <td colSpan={units.length + 4} className="text-center text-slate-400 py-8 text-sm">
                         לא נמצאו פריטים
                       </td>
                     </tr>
@@ -577,6 +602,47 @@ export default function WeaponsInventoryPage() {
             </div>
             <div className="flex justify-end mt-4">
               <button onClick={() => setDetail(null)} className="btn-secondary">סגור</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Zeroed (מאופסן) list modal — sorted by soldier, with the זיכוי note */}
+      {zeroedModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => setZeroedModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold">{zeroedModal.itemName}</h3>
+                <p className="text-sm text-slate-500">מאופסן · {zeroedModal.rows.length} פריטים</p>
+              </div>
+              <button onClick={() => setZeroedModal(null)}
+                className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+            </div>
+            <div className="border border-slate-200 rounded-lg overflow-auto max-h-80">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="text-right p-2 font-medium">חייל</th>
+                    <th className="text-right p-2 font-medium">צ׳</th>
+                    <th className="text-right p-2 font-medium">הערה</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {zeroedModal.rows.map((r) => (
+                    <tr key={r.id} className="border-b border-slate-100 last:border-0">
+                      <td className="p-2">{r.assigned_to_name ?? r.assigned_to_pn}</td>
+                      <td className="p-2 font-mono" dir="ltr">{isQtySerial(r.serial_number) ? '—' : r.serial_number}</td>
+                      <td className="p-2 text-slate-600">{r.zeroed_note || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end mt-4">
+              <button onClick={() => setZeroedModal(null)} className="btn-secondary">סגור</button>
             </div>
           </div>
         </div>

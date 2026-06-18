@@ -39,6 +39,10 @@ import AttendanceRecordsPage from './pages/personnel/AttendanceRecordsPage';
 // Vehicle pages (רכב)
 import VehicleManagePage from './pages/vehicles/VehicleManagePage';
 import VehicleSummaryPage from './pages/vehicles/VehicleSummaryPage';
+// Maneuver pages (תמרון)
+import ManeuverRequirementsPage from './pages/maneuver/ManeuverRequirementsPage';
+import ManeuverEntriesPage from './pages/maneuver/ManeuverEntriesPage';
+import ManeuverWorkPage from './pages/maneuver/ManeuverWorkPage';
 
 export default function App() {
   return (
@@ -90,6 +94,11 @@ export default function App() {
         {/* ── רכב (Vehicles) ── */}
         <Route path="vehicles/manage" element={<VehicleManagePage />} />
         <Route path="vehicles/summary" element={<VehicleSummaryPage />} />
+
+        {/* ── תמרון (Maneuver) ── */}
+        <Route path="maneuver/requirements" element={<ManeuverRequirementsPage />} />
+        <Route path="maneuver/entries" element={<ManeuverEntriesPage />} />
+        <Route path="maneuver/work" element={<ManeuverWorkPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

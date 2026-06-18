@@ -58,6 +58,13 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
+    id: 'maneuver', label: 'תמרון', items: [
+      { to: '/maneuver/requirements', label: 'דרישות תמרון' },
+      { to: '/maneuver/entries', label: 'כניסות / יציאות' },
+      { to: '/maneuver/work', label: 'משטח עבודה' },
+    ],
+  },
+  {
     id: 'admin', label: '⚙️ ניהול מערכת', admin: true, items: [
       { to: '/soldiers-import', label: 'ייבוא חיילים' },
       { to: '/soldiers', label: 'רשימת חיילים' },

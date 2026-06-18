@@ -593,6 +593,28 @@ Lib: `lib/vehicles.ts` — `listVehicleTypes`, `createVehicleType`, `deleteVehic
 
 ---
 
+## 15א. מודול תמרון (maneuver) — מיגרציה `0038_maneuver.sql`
+
+### Tables
+| טבלה | תוכן |
+|------|------|
+| `maneuver_categories` | קטגוריות דרישה — `name`. נזרע: אוכל, לוגיסטיקה, תחמושת, חימוש |
+| `maneuver_requirements` | דרישה אחת לשורה — `unit_id, team_id?(null), category_id, requirement, created_at` |
+| `maneuver_entries` | כניסות/יציאות — `unit_id, soldier_id, is_entry(bool: true=כניסה), date, created_at` |
+
+RLS פתוח (`using(true)`) + סקופ בצד הלקוח, כמו שאר המודולים. נגיש ל-admin **ורספ״ר** (רספ״ר ננעל למסגרת שלו; אין `admin:true` בניווט/route).
+
+### Pages (תחת /maneuver) — 3 מסכים
+| דף | נתיב | תיאור |
+|----|------|--------|
+| ManeuverRequirementsPage | /maneuver/requirements | **דרישות תמרון**. למעלה — הוספת קטגוריה. טופס: מסגרת + צוות (לא חובה) + קטגוריה + textarea (דרישה לשורה/פסיק → `splitRequirements`). "הוספה" → שורה לכל דרישה ב-`maneuver_requirements`. |
+| ManeuverEntriesPage | /maneuver/entries | **כניסות/יציאות**. בחירת מסגרת. שתי תיבות chip עם autocomplete על חיילי המסגרת (שם+מ.א) — נכנסים/יוצאים. "הזן רשימה (למחר)" → `addEntries` עם `tomorrowISO()`. מתחת — הרשימות השמורות מה-DB, ניתנות לעריכה (הוספה/× מחיקה פר-שם). "בוצע" → `deleteEntriesForUnit`. |
+| ManeuverWorkPage | /maneuver/work | **משטח עבודה**. בחירת מסגרת → דרישות מקובצות לקטגוריות ב-collapse שפותח צ׳ק ליסט. סימון → "העתק לוואטסאפ" (`navigator.clipboard`, פורמט `*קטגוריה*` + `- דרישה`, רק המסומנות) / "סיום דרישות" → `deleteRequirements` של המסומנות בלבד. |
+
+Lib: `lib/maneuver.ts` — `listCategories`, `createCategory`, `addRequirements`, `splitRequirements`, `listRequirements`(join קטגוריה), `deleteRequirements`, `addEntries`, `listEntries`(join חייל), `deleteEntry`, `deleteEntriesForUnit`, `tomorrowISO`.
+
+---
+
 ## 16. אבטחה (Security Hardening)
 
 מיגרציות `0028` (privatize buckets + RLS) ו-`0029_password_policy.sql`.

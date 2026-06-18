@@ -635,8 +635,8 @@ RLS פתוח + סקופ בצד הלקוח. נגיש admin+רספ״ר (רספ״ר
 |----|------|--------|
 | ImachItemsPage | /imach/items | **ניהול פריטים**: קטגוריות (הוספה/מחיקה), ימ״ח/מכולה למסגרת (`addImach`/`addMehula`, אחד לכל מסגרת), פריטים (קטגוריה+שם+יח״מ; admin: תקן+כלול-בסיכום). עריכה במודאל (admin). |
 | ImachContentsPage | /imach/contents | **תכולת ימ״ח/מכולה**: הערה למעלה. מסגרת → ימ״ח/מכולה (toggle) → סינון קטגוריה (לנוחות) → מילוי כמויות → "עדכן" = `setStorage` (delete+insert של ה-target). |
-| ImachBagsPage | /imach/bags | **תיקי לוחם**: למעלה (admin) תקן גדודי → `setBags`. בחירת מסגרת → חיילים בצוותים ב-collapse (סגור כברירת מחדל). לחיצה על חייל → מודאל פריטים (התקן, או כל הפריטים אם `bags` ריקה) עם חיפוש → `setSoldierBag`. **תיק גנרי** (`soldier_id=NULL`+`bag_label`, כמה לכל מסגרת). |
-| ImachSummaryPage | /imach/summary | **סיכום** לפי מסגרת: תיקי לוחם (סה״כ / כמה מלאים לפי התקן — כולל גנריים), וטבלת פריטים **`in_sum=true` בלבד** — תקן מול סכום (`soldier_bags` + `storage` של הימ״ח+מכולה), חוסר מסומן אדום. |
+| ImachBagsPage | /imach/bags | **תיקי לוחם**: למעלה (admin) תקן גדודי — **בחירת פריט→כמות→הוסף** (רשימה נערכת), `setBags`. בחירת מסגרת → חיילים בצוותים ב-collapse (סגור כברירת מחדל). לחיצה על חייל → מודאל פריטים (התקן, או כל הפריטים אם `bags` ריקה) עם חיפוש → `setSoldierBag`. **תיק גנרי** נבחר מ-`PAKAL` (גנרי חובש/נגב/מטול/לוחם); כפילויות מותרות — מתווסף מספר אינסטנס פנוי (`גנרי חובש 1/2…`) ל-`bag_label`. |
+| ImachSummaryPage | /imach/summary | **סיכום** לפי מסגרת, עם **toggle בין 2 תצוגות**: (א) **סיכום כמותי** — תיקי לוחם (סה״כ/מלאים לפי התקן, כולל גנריים) + טבלת פריטים `in_sum=true` (תקן מול `soldier_bags`+`storage`, חוסר אדום). (ב) **סיכום תיקי לוחמים** — מטריצה: עמודת שם + עמודה לכל פריט-תקן (כותרת עם "תקן N"), תא = כמות הלוחם (אדום אם < תקן); כל חיילי המסגרת, ותיקים גנריים בתחתית. |
 
 Lib: `lib/imach.ts` (לא להתבלבל עם `lib/storage.ts` של ה-buckets). פונקציות: קטגוריות/פריטים CRUD, `listUnitStorages`/`addImach`/`addMehula`, `getStorage`/`setStorage`/`getUnitStorageSums`, `listBags`/`setBags`, `listSoldierBags`/`setSoldierBag`(replace per bag)/`deleteGenericBag`.
 

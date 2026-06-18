@@ -9,6 +9,8 @@ import {
   type StorageItem, type Bag, type SoldierBag,
 } from '../../lib/imach';
 
+const PAKAL = ['גנרי חובש', 'גנרי נגב', 'גנרי מטול', 'גנרי לוחם'];
+
 /**
  * ניהול ימ״ח → תיקי לוחם.
  * Admin sets the battalion-wide standard bag (bags). Everyone picks a מסגרת,
@@ -142,10 +144,15 @@ export default function ImachBagsPage() {
     finally { setBusy(false); }
   }
 
-  function addGeneric() {
-    const label = prompt('שם התיק הגנרי:');
-    if (!label?.trim()) return;
-    setEditing({ soldierId: null, label: label.trim(), title: `תיק גנרי — ${label.trim()}` });
+  // Generic bags are chosen from a fixed פק״ל list; duplicates are fine — each new
+  // one gets the next free instance number (e.g. "גנרי חובש 1", "גנרי חובש 2").
+  function addGeneric(pakal: string) {
+    if (!pakal) return;
+    const labels = new Set(genericBags);
+    let n = 1;
+    while (labels.has(`${pakal} ${n}`)) n++;
+    const label = `${pakal} ${n}`;
+    setEditing({ soldierId: null, label, title: `תיק גנרי — ${label}` });
   }
 
   if (!isAdmin && !isRaspar) return <Navigate to="/" replace />;
@@ -228,7 +235,11 @@ export default function ImachBagsPage() {
           <div className="card space-y-2">
             <div className="flex items-center justify-between">
               <label className="label !mb-0">תיקים גנריים</label>
-              <button type="button" onClick={addGeneric} className="btn-secondary !py-1 !px-3 text-sm">+ תיק גנרי</button>
+              <select className="input !py-1 !px-3 text-sm w-auto" value=""
+                onChange={(e) => { if (e.target.value) addGeneric(e.target.value); e.target.value = ''; }}>
+                <option value="">+ תיק גנרי</option>
+                {PAKAL.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
             </div>
             {genericBags.length === 0 ? <p className="text-xs text-slate-400">אין תיקים גנריים</p> : (
               <div className="flex flex-wrap gap-2">

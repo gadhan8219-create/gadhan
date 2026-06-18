@@ -43,6 +43,11 @@ import VehicleSummaryPage from './pages/vehicles/VehicleSummaryPage';
 import ManeuverRequirementsPage from './pages/maneuver/ManeuverRequirementsPage';
 import ManeuverEntriesPage from './pages/maneuver/ManeuverEntriesPage';
 import ManeuverWorkPage from './pages/maneuver/ManeuverWorkPage';
+// Imach pages (ניהול ימ״ח)
+import ImachItemsPage from './pages/imach/ImachItemsPage';
+import ImachContentsPage from './pages/imach/ImachContentsPage';
+import ImachBagsPage from './pages/imach/ImachBagsPage';
+import ImachSummaryPage from './pages/imach/ImachSummaryPage';
 
 export default function App() {
   return (
@@ -99,6 +104,12 @@ export default function App() {
         <Route path="maneuver/requirements" element={<ManeuverRequirementsPage />} />
         <Route path="maneuver/entries" element={<ManeuverEntriesPage />} />
         <Route path="maneuver/work" element={<ManeuverWorkPage />} />
+
+        {/* ── ניהול ימ״ח (Imach) ── */}
+        <Route path="imach/items" element={<ImachItemsPage />} />
+        <Route path="imach/contents" element={<ImachContentsPage />} />
+        <Route path="imach/bags" element={<ImachBagsPage />} />
+        <Route path="imach/summary" element={<ImachSummaryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

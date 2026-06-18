@@ -65,6 +65,14 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
+    id: 'imach', label: 'ניהול ימ״ח', items: [
+      { to: '/imach/items', label: 'ניהול פריטים' },
+      { to: '/imach/contents', label: 'תכולת ימ״ח' },
+      { to: '/imach/bags', label: 'תיקי לוחם' },
+      { to: '/imach/summary', label: 'סיכום' },
+    ],
+  },
+  {
     id: 'admin', label: '⚙️ ניהול מערכת', admin: true, items: [
       { to: '/soldiers-import', label: 'ייבוא חיילים' },
       { to: '/soldiers', label: 'רשימת חיילים' },

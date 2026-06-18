@@ -615,6 +615,33 @@ Lib: `lib/maneuver.ts` — `listCategories`, `createCategory`, `addRequirements`
 
 ---
 
+## 15ב. מודול ניהול ימ״ח (imach) — מיגרציה `0039_imach.sql`
+
+### Tables
+| טבלה | תוכן |
+|------|------|
+| `storage_category` | קטגוריות פריט (נזרע: קליר/קרביץ/חד״פ/ציוד לחימה/ציוד תרומה) |
+| `storage_items` | פריטים — `storage_category_id, name, uom, required(תקן,admin), in_sum(bool)` |
+| `storage_by_unit` | ימ״ח — `unit_id` **unique** (אחד למסגרת) |
+| `substorage_by_unit` | מכולה — `unit_id` **unique** (אחת למסגרת) |
+| `storage` | תכולת ימ״ח/מכולה — `storage_by_unit_id XOR substorage_by_unit_id, storage_item_id, quantity` (constraint: בדיוק אחד) |
+| `bags` | תקן תיק לוחם גדודי — `storage_item_id unique, required` |
+| `soldier_bags` | תיק בפועל — `soldier_id(NULL=גנרי), unit_id, storage_item_id, quantity, bag_label` |
+
+RLS פתוח + סקופ בצד הלקוח. נגיש admin+רספ״ר (רספ״ר ננעל למסגרתו). **הרשאות per-מסך** (לא ב-route): פריטים/תכולה/תיקים-לחייל/סיכום — כולם; **תקן פריט (required/in_sum)** + **תקן תיק לוחם** — admin בלבד (UI-gated).
+
+### Pages (תחת /imach) — 4 מסכים
+| דף | נתיב | תיאור |
+|----|------|--------|
+| ImachItemsPage | /imach/items | **ניהול פריטים**: קטגוריות (הוספה/מחיקה), ימ״ח/מכולה למסגרת (`addImach`/`addMehula`, אחד לכל מסגרת), פריטים (קטגוריה+שם+יח״מ; admin: תקן+כלול-בסיכום). עריכה במודאל (admin). |
+| ImachContentsPage | /imach/contents | **תכולת ימ״ח/מכולה**: הערה למעלה. מסגרת → ימ״ח/מכולה (toggle) → סינון קטגוריה (לנוחות) → מילוי כמויות → "עדכן" = `setStorage` (delete+insert של ה-target). |
+| ImachBagsPage | /imach/bags | **תיקי לוחם**: למעלה (admin) תקן גדודי → `setBags`. בחירת מסגרת → חיילים בצוותים ב-collapse (סגור כברירת מחדל). לחיצה על חייל → מודאל פריטים (התקן, או כל הפריטים אם `bags` ריקה) עם חיפוש → `setSoldierBag`. **תיק גנרי** (`soldier_id=NULL`+`bag_label`, כמה לכל מסגרת). |
+| ImachSummaryPage | /imach/summary | **סיכום** לפי מסגרת: תיקי לוחם (סה״כ / כמה מלאים לפי התקן — כולל גנריים), וטבלת פריטים **`in_sum=true` בלבד** — תקן מול סכום (`soldier_bags` + `storage` של הימ״ח+מכולה), חוסר מסומן אדום. |
+
+Lib: `lib/imach.ts` (לא להתבלבל עם `lib/storage.ts` של ה-buckets). פונקציות: קטגוריות/פריטים CRUD, `listUnitStorages`/`addImach`/`addMehula`, `getStorage`/`setStorage`/`getUnitStorageSums`, `listBags`/`setBags`, `listSoldierBags`/`setSoldierBag`(replace per bag)/`deleteGenericBag`.
+
+---
+
 ## 16. אבטחה (Security Hardening)
 
 מיגרציות `0028` (privatize buckets + RLS) ו-`0029_password_policy.sql`.

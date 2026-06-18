@@ -58,7 +58,7 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
-    id: 'maneuver', label: 'תמרון', items: [
+    id: 'maneuver', label: '15א׳', items: [
       { to: '/maneuver/requirements', label: 'דרישות תמרון' },
       { to: '/maneuver/entries', label: 'כניסות / יציאות' },
       { to: '/maneuver/work', label: 'משטח עבודה' },

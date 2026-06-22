@@ -644,6 +644,22 @@ Lib: `lib/imach.ts` (לא להתבלבל עם `lib/storage.ts` של ה-buckets).
 
 ---
 
+## 15ג. יומן ביקורת מובנה (audit) — מיגרציה `0040_audit_structured.sql`
+
+הרחבת `audit_logs` ב-4 עמודות מובנות: `category` (נשקייה/קשר/בונקר/רכב), `action_type`, `soldier_name`, `items jsonb`. שורות ישנות (category NULL) נשארות; המסך החדש קורא רק שורות מובנות (`category not null`).
+
+**`logAction({ category, actionType, soldierName?, items? })`** ב-`lib/audit.ts` (best-effort, לא זורק) + קבועים `AUDIT_CATEGORIES` / `AUDIT_ACTIONS` (קטגוריה→סוגי פעולה, מזין גם את הפילטרים במסך).
+
+**מה מתועד (אחיד):**
+- **נשקייה**: החתמה (`WeaponsCheckoutPage`), זיכוי/אפסון/העברה/ראש-בראש (`WeaponsTransferPage`). soldierName = החייל (בהעברה/ראש-בראש "src → dst").
+- **קשר**: החתמת חייל (`SignFormPage`), החתמת מסגרת/זיכוי (`UnitSignFormPage`; soldierName = שם המסגרת).
+- **בונקר**: קבלות/ניפוק/זיכוי/העברה/וויסותים/שצ״ל — ב-`lib/bunker.ts` אחרי כל RPC (soldierName = האדם בפעולה).
+- **רכב**: עדכון — `createVehicle`/`updateVehicle` ב-`lib/vehicles.ts`.
+
+**מסך**: `AuditLogPage` (`/audit-log`, תחת ניהול מערכת, **admin בלבד**). שליפה **לפי דרישה** (כפתור "שלוף", לא טעינה אוטומטית). סינון לפי קטגוריה + סוג פעולה (תלוי בקטגוריה), בחירת **כמות** (25/50/100/200/500). עמודות: שם המבצע · תאריך · שם החייל · קטגוריה · סוג פעולה · פריטים. (ה-`LogsPage` הישן `/logs` נשאר, גולמי, לא בתפריט.)
+
+> ⚠️ מיגרציה 0040 ממתינה להרצה (הרשת חסמה את ה-CLI בזמן הבנייה). עד שתרוץ — `logAction` נכשל בשקט (try/catch) והמסך יראה שגיאה. להריץ `supabase db push` כשהרשת פתוחה או דרך Dashboard SQL Editor.
+
 ## 16. אבטחה (Security Hardening)
 
 מיגרציות `0028` (privatize buckets + RLS) ו-`0029_password_policy.sql`.

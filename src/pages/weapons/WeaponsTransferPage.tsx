@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
+import { logAction } from '../../lib/audit';
 import type { WeaponsItem } from '../../lib/database.types';
 
 // ── Drive PDF helper ─────────────────────────────────────────────────────────
@@ -328,6 +329,11 @@ export default function WeaponsTransferPage() {
 
       // 3. Show success immediately — PDFs fire in background
       setSuccess(`${ids.length} פריטים הוחזרו לגדוד`);
+      await logAction({
+        category: 'נשקייה', actionType: 'זיכוי',
+        soldierName: pdfCtx?.soldier.full_name ?? null,
+        items: (pdfCtx?.credited_items ?? []).map((it) => `${it.name}${it.serial ? ` ${it.serial}` : ''}`),
+      });
       await loadAll();
       resetForms();
 
@@ -383,6 +389,11 @@ export default function WeaponsTransferPage() {
         throw new Error('לא ניתן להעביר חלק מהפריטים — ייתכן שאין הרשאה למסגרת זו');
       }
       setSuccess(`${rows.length} פריטים הועברו ל-${dstSoldier.full_name}`);
+      await logAction({
+        category: 'נשקייה', actionType: 'העברה',
+        soldierName: `${srcSoldier.full_name} → ${dstSoldier.full_name}`,
+        items: rows.map((r) => `${r.item_name}${isQtySerial(r.serial_number) ? '' : ` ${r.serial_number}`}`),
+      });
       // Both soldiers' holdings changed → refresh their החתמות sheets.
       fireHoldingsPdf({ full_name: srcSoldier.full_name, personal_number: srcSoldier.personal_number, unit_name: srcSoldier.unit_name });
       fireHoldingsPdf({ full_name: dstSoldier.full_name, personal_number: dstSoldier.personal_number, unit_name: dstSoldier.unit_name });
@@ -427,6 +438,11 @@ export default function WeaponsTransferPage() {
         if (!b || b.length === 0) throw new Error(`לא ניתן לבצע ראש בראש על ${p.itemName} — ייתכן שאין הרשאה למסגרת זו`);
       }
       setSuccess(`ראש בראש בוצע ל-${toSwap.length} פריטים`);
+      await logAction({
+        category: 'נשקייה', actionType: 'ראש בראש',
+        soldierName: `${srcSoldier.full_name} ⇄ ${dstSoldier.full_name}`,
+        items: toSwap.map((o) => o.itemName),
+      });
       // Both soldiers swapped items → refresh both החתמות sheets.
       fireHoldingsPdf({ full_name: srcSoldier.full_name, personal_number: srcSoldier.personal_number, unit_name: srcSoldier.unit_name });
       fireHoldingsPdf({ full_name: dstSoldier.full_name, personal_number: dstSoldier.personal_number, unit_name: dstSoldier.unit_name });
@@ -450,6 +466,11 @@ export default function WeaponsTransferPage() {
         if (error) throw new Error(error.message);
       }
       setSuccess(`${rows.length} פריטים אופסנו אצל ${srcSoldier?.full_name}`);
+      await logAction({
+        category: 'נשקייה', actionType: 'אפסון',
+        soldierName: srcSoldier?.full_name ?? null,
+        items: rows.map((r) => `${r.item_name}${isQtySerial(r.serial_number) ? '' : ` ${r.serial_number}`}`),
+      });
       await loadAll(); resetForms();
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }

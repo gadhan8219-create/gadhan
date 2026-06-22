@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
-import { logAudit } from '../lib/audit';
+import { logAudit, logAction } from '../lib/audit';
 import { loadSoldierHeldItems, type HeldItem } from '../lib/heldItems';
 import { fireDrivePdf, fireDeleteDrivePdf } from '../lib/drivePdf';
 import { loadUnitAvailability, type UnitAvailability } from '../lib/unitStock';
@@ -285,6 +285,14 @@ export default function SignFormPage() {
       }
 
       await logAudit({ action: 'signing.signing', targetType: 'signing', targetId: signing.id, details: { soldier_id: finalSoldierId, items: valid.length } });
+      await logAction({
+        category: 'קשר', actionType: 'החתמת חייל',
+        soldierName: useExisting ? (selectedSoldier?.full_name ?? null) : newSoldier.full_name,
+        items: valid.map((l) => {
+          const it = items.find((i) => i.id === l.itemId);
+          return `${it?.name ?? 'פריט'}${l.serialNumber.trim() ? ` ${l.serialNumber.trim()}` : ''}`;
+        }),
+      });
 
       // Show success immediately
       setFeedback({ type: 'success', msg: 'נשמר בהצלחה' });

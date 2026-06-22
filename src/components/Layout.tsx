@@ -77,6 +77,7 @@ const SECTIONS: NavSection[] = [
       { to: '/soldiers-import', label: 'ייבוא חיילים' },
       { to: '/soldiers', label: 'רשימת חיילים' },
       { to: '/users', label: 'ניהול משתמשים' },
+      { to: '/audit-log', label: 'יומן ביקורת' },
     ],
   },
 ];

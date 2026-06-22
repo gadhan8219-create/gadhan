@@ -1,4 +1,7 @@
 import { supabase } from './supabase';
+import { logAction } from './audit';
+
+const fmtItems = (items: ReceiptItem[]) => items.map((i) => `${i.name} x${i.quantity}`);
 
 export interface BunkerWarehouse { id: string; name: string; created_at: string }
 export interface BunkerItem { id: string; name: string; created_at: string }
@@ -134,6 +137,7 @@ export async function applyReceipt(
     p_items: items,
   });
   if (error) throw error;
+  await logAction({ category: 'בונקר', actionType: 'קבלות', soldierName: receiver, items: fmtItems(items) });
 }
 
 export async function recentReceipts(warehouseId: string, limit = 5): Promise<BunkerReceipt[]> {
@@ -168,6 +172,7 @@ export async function applyDispense(
     p_items: items,
   });
   if (error) throw error;
+  await logAction({ category: 'בונקר', actionType: 'ניפוק', soldierName: person, items: fmtItems(items) });
 }
 
 export async function recentDispenses(unit: string, limit = 5): Promise<BunkerDispense[]> {
@@ -195,6 +200,7 @@ export async function applyCredit(
     p_items: items,
   });
   if (error) throw error;
+  await logAction({ category: 'בונקר', actionType: 'זיכוי', soldierName: receiver, items: fmtItems(items) });
 }
 
 export async function recentCredits(unit: string, limit = 5): Promise<BunkerCredit[]> {
@@ -222,6 +228,7 @@ export async function applyTransfer(
     p_items: items,
   });
   if (error) throw error;
+  await logAction({ category: 'בונקר', actionType: 'העברה', soldierName: inCharge, items: fmtItems(items) });
 }
 
 export async function recentTransfers(originId: string, limit = 5): Promise<BunkerTransfer[]> {
@@ -249,6 +256,7 @@ export async function applyShatsal(
     p_items: items,
   });
   if (error) throw error;
+  await logAction({ category: 'בונקר', actionType: 'שצ״ל', soldierName: reporter, items: fmtItems(items) });
 }
 
 export async function recentShatsal(unit: string, limit = 5): Promise<BunkerShatsal[]> {
@@ -284,6 +292,7 @@ export async function applyRegulation(
     p_items: items,
   });
   if (error) throw error;
+  await logAction({ category: 'בונקר', actionType: 'וויסותים', soldierName: performer, items: fmtItems(items) });
 }
 
 export async function recentRegulations(warehouseId: string, limit = 5): Promise<BunkerRegulation[]> {

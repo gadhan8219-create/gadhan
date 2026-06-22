@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
+import { logAction } from '../../lib/audit';
 import type { WeaponsItem } from '../../lib/database.types';
 import SignaturePad, { type SignaturePadHandle } from '../../components/SignaturePad';
 
@@ -425,6 +426,13 @@ export default function WeaponsCheckoutPage() {
 
       // 4. Show success immediately — PDF fires in background
       setSuccess(true);
+      await logAction({
+        category: 'נשקייה', actionType: 'החתמה', soldierName: activeName,
+        items: validLines.map((l) => {
+          const it = weaponItems.find((i) => i.id === l.itemId);
+          return `${it?.name ?? 'פריט'}${l.serial ? ` ${l.serial}` : ''}`;
+        }),
+      });
 
       // 5. Fire PDF generation async (no await) — error email sent by backend if it fails
       const signaturePng = sigPadRef.current!.toDataUrl();

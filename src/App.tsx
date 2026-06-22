@@ -16,6 +16,7 @@ import UnitSignFormPage from './pages/UnitSignFormPage';
 import UnitSigningsPage from './pages/UnitSigningsPage';
 import UnitStockReportPage from './pages/UnitStockReportPage';
 import SoldiersImportPage from './pages/SoldiersImportPage';
+import AuditLogPage from './pages/AuditLogPage';
 // Weapons pages
 import WeaponsCheckoutPage from './pages/weapons/WeaponsCheckoutPage';
 import WeaponsInventoryPage from './pages/weapons/WeaponsInventoryPage';
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="unit-signings" element={<ProtectedRoute requireAdmin><UnitSigningsPage /></ProtectedRoute>} />
         <Route path="unit-stock" element={<UnitStockReportPage />} />
         <Route path="soldiers-import" element={<ProtectedRoute requireAdmin><SoldiersImportPage /></ProtectedRoute>} />
+        <Route path="audit-log" element={<ProtectedRoute requireAdmin><AuditLogPage /></ProtectedRoute>} />
 
         {/* ── נשקים (Weapons) ── */}
         <Route path="weapons/checkout" element={<WeaponsCheckoutPage />} />

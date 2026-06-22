@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
-import { logAudit } from '../lib/audit';
+import { logAudit, logAction } from '../lib/audit';
 import { loadUnitHeldForReturn } from '../lib/unitStock';
 import { loadBattalionSerials } from '../lib/itemSerials';
 import { fireDrivePdf } from '../lib/drivePdf';
@@ -206,6 +206,14 @@ export default function UnitSignFormPage() {
         targetType: 'unit_signing',
         targetId: us.id,
         details: { unit_id: unitId, items: inserts.length },
+      });
+      await logAction({
+        category: 'קשר', actionType: isReturn ? 'זיכוי' : 'החתמת מסגרת',
+        soldierName: units.find((u) => u.id === unitId)?.name ?? null,
+        items: inserts.map((i) => {
+          const it = items.find((x) => x.id === i.item_id);
+          return `${it?.name ?? 'פריט'}${i.serial_number ? ` ${i.serial_number}` : ` x${i.quantity}`}`;
+        }),
       });
 
       setFeedback({ type: 'success', msg: `נשמר בהצלחה (${inserts.length} פריטים)` });

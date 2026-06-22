@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { logAction } from './audit';
 
 // רכב — vehicle registry.
 //
@@ -166,6 +167,7 @@ export async function createVehicle(input: VehicleInput): Promise<Vehicle> {
     }
     throw error;
   }
+  await logAction({ category: 'רכב', actionType: 'עדכון', items: [`רכב ${plate} (חדש)`] });
   return normalizeDocs(data as Vehicle);
 }
 
@@ -178,6 +180,7 @@ export async function updateVehicle(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;
+  if (patch.car_plate) await logAction({ category: 'רכב', actionType: 'עדכון', items: [`רכב ${patch.car_plate}`] });
 }
 
 export async function deleteVehicle(id: string): Promise<void> {

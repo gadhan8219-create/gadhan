@@ -16,34 +16,41 @@ const PAGE_SIZES = [25, 50, 100, 200, 500];
 
 /**
  * ניהול מערכת → יומן ביקורת.
- * On-demand query over the structured audit rows. Filter by category + action
- * type, choose how many rows to pull, and fetch only when asked.
+ * On-demand query over the structured audit rows (newest → oldest). Filter by
+ * category + action type + date range, choose page size, and page through.
  */
 export default function AuditLogPage() {
   const [category, setCategory] = useState<AuditCategory | ''>('');
   const [actionType, setActionType] = useState('');
   const [pageSize, setPageSize] = useState(50);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [page, setPage] = useState(0);        // 0-based
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchRows() {
+  async function fetchPage(p: number) {
     setLoading(true); setError(null);
     try {
       let q = supabase
         .from('audit_logs')
-        .select('id, performed_by, soldier_name, category, action_type, items, created_at')
+        .select('id, performed_by, soldier_name, category, action_type, items, created_at', { count: 'exact' })
         .not('category', 'is', null)
         .order('created_at', { ascending: false })
-        .limit(pageSize);
+        .range(p * pageSize, p * pageSize + pageSize - 1);
       if (category) q = q.eq('category', category);
       if (actionType) q = q.eq('action_type', actionType);
-      const { data, error: e } = await q;
+      if (dateFrom) q = q.gte('created_at', `${dateFrom}T00:00:00`);
+      if (dateTo) q = q.lte('created_at', `${dateTo}T23:59:59.999`);
+      const { data, error: e, count } = await q;
       if (e) throw e;
       const raw = (data ?? []) as Array<{ id: string; performed_by: string | null; soldier_name: string | null; category: string | null; action_type: string | null; items: string[] | null; created_at: string }>;
       const ids = [...new Set(raw.map((r) => r.performed_by).filter(Boolean) as string[])];
       const profs = ids.length ? (await supabase.from('profiles').select('id, full_name').in('id', ids)).data ?? [] : [];
-      const nameMap = new Map(profs.map((p) => [p.id as string, p.full_name as string]));
+      const nameMap = new Map(profs.map((pr) => [pr.id as string, pr.full_name as string]));
       setRows(raw.map((r) => ({
         id: r.id,
         performerName: r.performed_by ? (nameMap.get(r.performed_by) ?? '—') : '—',
@@ -53,11 +60,17 @@ export default function AuditLogPage() {
         items: r.items,
         created_at: r.created_at,
       })));
+      setTotal(count ?? 0);
+      setPage(p);
     } catch (e) { setError((e as Error).message); }
     finally { setLoading(false); }
   }
 
   const actionOptions = category ? AUDIT_ACTIONS[category] : [];
+  const from = total === 0 ? 0 : page * pageSize + 1;
+  const to = Math.min((page + 1) * pageSize, total);
+  const hasPrev = page > 0;
+  const hasNext = (page + 1) * pageSize < total;
 
   return (
     <div className="space-y-5">
@@ -74,7 +87,7 @@ export default function AuditLogPage() {
 
       {/* Filters */}
       <div className="card">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
             <label className="label">קטגוריה</label>
             <select className="input" value={category}
@@ -91,16 +104,24 @@ export default function AuditLogPage() {
             </select>
           </div>
           <div>
-            <label className="label">כמות</label>
+            <label className="label">כמות לעמוד</label>
             <select className="input" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
               {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
-        </div>
-        <div className="flex justify-end mt-3">
-          <button type="button" onClick={fetchRows} disabled={loading} className="btn-primary">
-            {loading ? 'שולף…' : 'שלוף'}
-          </button>
+          <div>
+            <label className="label">מתאריך</label>
+            <input type="date" className="input" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">עד תאריך</label>
+            <input type="date" className="input" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
+          </div>
+          <div className="flex items-end">
+            <button type="button" onClick={() => fetchPage(0)} disabled={loading} className="btn-primary w-full">
+              {loading ? 'שולף…' : 'שלוף'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -110,27 +131,39 @@ export default function AuditLogPage() {
       ) : rows.length === 0 ? (
         <div className="card text-center text-slate-400 py-10 text-sm">לא נמצאו פעולות</div>
       ) : (
-        <div className="card p-0 overflow-x-auto">
-          <table className="table-base">
-            <thead>
-              <tr>
-                <th>שם המבצע</th><th>תאריך</th><th>שם החייל</th><th>קטגוריה</th><th>סוג פעולה</th><th>פריטים</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="whitespace-nowrap font-medium">{r.performerName}</td>
-                  <td className="whitespace-nowrap text-xs text-slate-600">{new Date(r.created_at).toLocaleString('he-IL')}</td>
-                  <td className="whitespace-nowrap">{r.soldier_name ?? '—'}</td>
-                  <td>{r.category ?? '—'}</td>
-                  <td>{r.action_type ?? '—'}</td>
-                  <td className="text-xs text-slate-600">{r.items && r.items.length ? r.items.join(', ') : '—'}</td>
+        <>
+          <div className="flex items-center justify-between text-sm text-slate-500">
+            <span>{from}–{to} מתוך {total}</span>
+            <div className="flex gap-2">
+              <button type="button" disabled={!hasPrev || loading} onClick={() => fetchPage(page - 1)}
+                className="btn-secondary !py-1.5 !px-3 disabled:opacity-40">הקודם →</button>
+              <button type="button" disabled={!hasNext || loading} onClick={() => fetchPage(page + 1)}
+                className="btn-secondary !py-1.5 !px-3 disabled:opacity-40">← הבא</button>
+            </div>
+          </div>
+
+          <div className="card p-0 overflow-x-auto">
+            <table className="table-base">
+              <thead>
+                <tr>
+                  <th>שם המבצע</th><th>תאריך</th><th>שם החייל</th><th>קטגוריה</th><th>סוג פעולה</th><th>פריטים</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="whitespace-nowrap font-medium">{r.performerName}</td>
+                    <td className="whitespace-nowrap text-xs text-slate-600">{new Date(r.created_at).toLocaleString('he-IL')}</td>
+                    <td className="whitespace-nowrap">{r.soldier_name ?? '—'}</td>
+                    <td>{r.category ?? '—'}</td>
+                    <td>{r.action_type ?? '—'}</td>
+                    <td className="text-xs text-slate-600">{r.items && r.items.length ? r.items.join(', ') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
